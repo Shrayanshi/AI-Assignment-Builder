@@ -3,6 +3,7 @@ import { EditorModal } from "./components/QuestionBank/EditorModal";
 import { AssignmentRow } from "./components/QuestionBank/AssignmentRow";
 import { QuestionCard } from "./components/QuestionBank/QuestionCard";
 import { AiQuestionGenerator } from "./components/QuestionBank/AiQuestionGenerator";
+import { ToastStack } from "./components/ui/Toast";
 import {
   panelStyle,
   primaryBtnStyle,
@@ -148,11 +149,13 @@ function loadInitialState() {
   };
 }
 
-export default function App() {
+export default function App({ paperTemplate, onBack, openAssignmentId, onCreateDocument, onGoHome }) {
   const initial = loadInitialState();
   const [questions, setQuestions] = useState(initial.questions);
   const [assignments, setAssignments] = useState(initial.assignments);
-  const [activeAssignmentId, setActiveAssignmentId] = useState(initial.activeAssignmentId);
+  const [activeAssignmentId, setActiveAssignmentId] = useState(
+    openAssignmentId || initial.activeAssignmentId
+  );
   const [search, setSearch] = useState(initial.search);
   const [activeQuestionId, setActiveQuestionId] = useState(
     () => assignments.find(a => a.id === initial.activeAssignmentId)?.questionIds[0] ?? questions[0]?.id ?? null
@@ -163,12 +166,83 @@ export default function App() {
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
+  const [toasts, setToasts] = useState([]);
+
+  function pushToast(message, variant = "info") {
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    setToasts(prev => [...prev, { id, message, variant }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 2500);
+  }
+
+  // Load from backend once on mount, then fall back to local storage if unavailable.
+  useEffect(() => {
+    async function loadFromBackend() {
+      try {
+        const [qRes, aRes] = await Promise.all([
+          fetch("http://localhost:3001/questions"),
+          fetch("http://localhost:3001/assignments"),
+        ]);
+        if (!qRes.ok || !aRes.ok) return;
+
+        const [qs, as] = await Promise.all([qRes.json(), aRes.json()]);
+
+        // Normalize question IDs to strings and keep options
+        const normalizedQs = qs.map((q) => ({
+          ...q,
+          id: String(q.id),
+          richText: q.text,
+        }));
+
+        const enrichedAssignments = await Promise.all(
+          as.map(async (a) => {
+            try {
+              const full = await fetch(
+                `http://localhost:3001/assignments/${a.id}`,
+              ).then((r) => r.json());
+              const qIds = (full.questions || []).map((q) => String(q.id));
+              return { id: String(a.id), name: a.name, questionIds: qIds };
+            } catch {
+              return { id: String(a.id), name: a.name, questionIds: [] };
+            }
+          }),
+        );
+
+        setQuestions(normalizedQs);
+        setAssignments(enrichedAssignments);
+
+        const first = enrichedAssignments[0];
+        const nextAssignmentId =
+          openAssignmentId || first?.id || initial.activeAssignmentId;
+
+        setActiveAssignmentId(nextAssignmentId);
+
+        const firstQuestionId =
+          enrichedAssignments.find((a) => a.id === nextAssignmentId)?.questionIds[0] ??
+          normalizedQs[0]?.id ??
+          null;
+        setActiveQuestionId(firstQuestionId);
+      } catch (err) {
+        console.error("Failed to load from backend, using local state", err);
+      }
+    }
+
+    loadFromBackend();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ questions, assignments, activeAssignmentId, search }));
     } catch { }
   }, [questions, assignments, activeAssignmentId, search]);
+
+  useEffect(() => {
+    if (openAssignmentId) {
+      setActiveAssignmentId(openAssignmentId);
+    }
+  }, [openAssignmentId]);
 
   const activeAssignment = assignments.find(a => a.id === activeAssignmentId) ?? null;
   const assignmentQuestions = (activeAssignment?.questionIds ?? [])
@@ -189,22 +263,62 @@ export default function App() {
     setAssignments(prev => prev.map(a => a.id === activeAssignmentId ? { ...a, questionIds: nextIds } : a));
   }
 
-  function toggleQuestion(qid) {
+  async function toggleQuestion(qid) {
     if (!activeAssignment) return;
-    if (selectedIds.has(qid)) {
+    const assignmentId = activeAssignment.id;
+    const already = selectedIds.has(qid);
+
+    // Optimistic local update
+    if (already) {
       updateAssignmentIds(activeAssignment.questionIds.filter(id => id !== qid));
+      pushToast("Question removed from assignment", "info");
     } else {
       updateAssignmentIds([...activeAssignment.questionIds, qid]);
+      pushToast("Question added to assignment", "success");
+    }
+
+    // Sync to backend
+    try {
+      if (already) {
+        await fetch(
+          `http://localhost:3001/assignments/${assignmentId}/questions/${qid}`,
+          { method: "DELETE" },
+        );
+      } else {
+        await fetch(
+          `http://localhost:3001/assignments/${assignmentId}/questions`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ questionId: qid }),
+          },
+        );
+      }
+    } catch (err) {
+      console.error("Failed to sync assignment questions", err);
     }
   }
 
-  function createAssignment() {
+  async function createAssignment() {
     const name = window.prompt("New assignment name:");
     if (!name) return;
-    const id = `a-${Date.now().toString(36)}`;
-    setAssignments(prev => [...prev, { id, name, questionIds: [] }]);
-    setActiveAssignmentId(id);
-    setActiveQuestionId(null);
+    try {
+      const res = await fetch("http://localhost:3001/assignments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) throw new Error("Failed to create assignment");
+      const a = await res.json();
+      const id = String(a.id);
+      setAssignments(prev => [...prev, { id, name: a.name, questionIds: [] }]);
+      setActiveAssignmentId(id);
+      setActiveQuestionId(null);
+      pushToast("Assignment created", "success");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to create assignment on server.");
+    }
   }
 
   function openEditor(mode, question) {
@@ -224,7 +338,7 @@ export default function App() {
     setEditorMode(mode);
   }
 
-  function saveEditor() {
+  async function saveEditor() {
     const plainText = editorDraft?.text?.trim() || editorDraft?.richText?.replace(/<[^>]+>/g, "").trim();
     if (!plainText) { alert("Question text is required."); return; }
 
@@ -245,16 +359,95 @@ export default function App() {
       correctIndex: cleanedCorrectIndex,
     };
 
+    // CREATE
     if (editorMode === "create" || !editorDraft.id) {
-      const id = `q-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-      setQuestions(prev => [...prev, { ...finalDraft, id }]);
-      if (activeAssignment) updateAssignmentIds([...activeAssignment.questionIds, id]);
-      setActiveQuestionId(id);
+      try {
+        const res = await fetch("http://localhost:3001/questions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: finalDraft.type,
+            marks: finalDraft.marks,
+            difficulty: finalDraft.difficulty,
+            topic: finalDraft.topic,
+            rubric: finalDraft.rubric,
+            text: finalDraft.text,
+            options: finalDraft.options,
+          }),
+        });
+        if (!res.ok) throw new Error("Failed to create question");
+        const saved = await res.json();
+        const id = String(saved.id);
+        const newQ = { ...saved, id, richText: finalDraft.richText || finalDraft.text };
+        setQuestions(prev => [...prev, newQ]);
+
+        if (activeAssignment) {
+          updateAssignmentIds([...activeAssignment.questionIds, id]);
+          try {
+            await fetch(
+              `http://localhost:3001/assignments/${activeAssignment.id}/questions`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ questionId: id }),
+              },
+            );
+          } catch (err) {
+            console.error("Failed to link question to assignment", err);
+          }
+        }
+        setActiveQuestionId(id);
+      } catch (err) {
+        console.error(err);
+        alert("Failed to save question on server.");
+        return;
+      }
     } else {
-      setQuestions(prev => prev.map(q => q.id === editorDraft.id ? { ...q, ...finalDraft } : q));
-      setActiveQuestionId(editorDraft.id);
+      // EDIT
+      try {
+        const res = await fetch(
+          `http://localhost:3001/questions/${editorDraft.id}`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: finalDraft.type,
+              marks: finalDraft.marks,
+              difficulty: finalDraft.difficulty,
+              topic: finalDraft.topic,
+              rubric: finalDraft.rubric,
+              text: finalDraft.text,
+              options: finalDraft.options,
+            }),
+          },
+        );
+        if (!res.ok) throw new Error("Failed to update question");
+        const saved = await res.json();
+        const id = String(saved.id);
+        setQuestions(prev =>
+          prev.map(q =>
+            q.id === id
+              ? { ...saved, id, richText: finalDraft.richText || finalDraft.text }
+              : q,
+          ),
+        );
+        setActiveQuestionId(id);
+      } catch (err) {
+        console.error(err);
+        alert("Failed to update question on server.");
+        return;
+      }
     }
-    setEditorMode(null); setEditorDraft(null);
+
+    pushToast(
+      editorMode === "create" || !editorDraft.id
+        ? "Question created"
+        : "Question updated",
+      "success",
+    );
+
+    setEditorMode(null);
+    setEditorDraft(null);
   }
 
   function aiSuggest() {
@@ -326,7 +519,7 @@ export default function App() {
     });
   }
 
-  function deleteQuestion(id) {
+  async function deleteQuestion(id) {
     if (!window.confirm("Delete this question from the bank and all assignments?")) {
       return;
     }
@@ -340,12 +533,44 @@ export default function App() {
     if (activeQuestionId === id) {
       setActiveQuestionId(null);
     }
+
+    try {
+      await fetch(`http://localhost:3001/questions/${id}`, { method: "DELETE" });
+    } catch (err) {
+      console.error("Failed to delete question on server", err);
+    }
+
+    pushToast("Question deleted", "info");
   }
 
   function exportDoc() {
     if (!activeAssignment) { alert("No active assignment."); return; }
     const title = activeAssignment.name;
-    let html = `<html><head><meta charset='utf-8'></head><body><h1>${title}</h1><ol>`;
+    let html = `<html><head><meta charset='utf-8'></head><body>`;
+
+    if (paperTemplate) {
+      html += `<div style="text-align:center;border-bottom:1px solid #e5e7eb;padding-bottom:8px;margin-bottom:8px;">`;
+      html += `<p style="font-weight:bold;font-size:14px;margin:0;">${paperTemplate.schoolName || "School Name"}</p>`;
+      html += `<p style="font-size:12px;color:#4b5563;margin:4px 0 0;">${paperTemplate.schoolAddress || "School Address"}</p>`;
+      html += `</div>`;
+      html += `<div style="text-align:center;margin-bottom:8px;">`;
+      html += `<p style="font-weight:600;margin:0;">${paperTemplate.examType || "Exam Type"}</p>`;
+      html += `<p style="font-size:12px;color:#4b5563;margin:2px 0 0;">Academic Year: ${paperTemplate.academicYear || "YYYY-YYYY"}</p>`;
+      html += `</div>`;
+      html += `<div style="display:flex;flex-wrap:wrap;font-size:12px;margin-bottom:8px;">`;
+      html += `<span style="margin-right:12px;"><strong>Class:</strong> ${paperTemplate.grade || "Grade X"}</span>`;
+      html += `<span style="margin-right:12px;"><strong>Subject:</strong> ${paperTemplate.subject || "Subject"}</span>`;
+      html += `<span style="margin-right:12px;"><strong>Duration:</strong> ${paperTemplate.duration || "-- hours"}</span>`;
+      html += `<span style="margin-right:12px;"><strong>Max Marks:</strong> ${paperTemplate.totalMarks || "--"}</span>`;
+      if (paperTemplate.date) {
+        html += `<span style="margin-right:12px;"><strong>Date:</strong> ${new Date(paperTemplate.date).toLocaleDateString()}</span>`;
+      }
+      html += `</div><hr style="margin:12px 0;" />`;
+    } else {
+      html += `<h1>${title}</h1>`;
+    }
+
+    html += `<ol>`;
     assignmentQuestions.forEach(q => {
       html += `<li>${q.richText ?? q.text}`;
       if (q.type === "MCQ" && q.options?.length) {
@@ -365,7 +590,31 @@ export default function App() {
   function exportPdf() {
     if (!activeAssignment) { alert("No active assignment."); return; }
     const title = activeAssignment.name;
-    let html = `<html><head><meta charset='utf-8'><title>${title}</title><style>body{font-family:system-ui;margin:32px}h1{font-size:20px}li{margin-bottom:14px}img{max-width:100%}ul{margin:6px 0}</style></head><body><h1>${title}</h1><ol>`;
+    let html = `<html><head><meta charset='utf-8'><title>${title}</title><style>body{font-family:system-ui;margin:32px}h1{font-size:20px}li{margin-bottom:14px}img{max-width:100%}ul{margin:6px 0}</style></head><body>`;
+
+    if (paperTemplate) {
+      html += `<div style="text-align:center;border-bottom:1px solid #e5e7eb;padding-bottom:8px;margin-bottom:8px;">`;
+      html += `<p style="font-weight:bold;font-size:16px;margin:0;">${paperTemplate.schoolName || "School Name"}</p>`;
+      html += `<p style="font-size:13px;color:#4b5563;margin:4px 0 0;">${paperTemplate.schoolAddress || "School Address"}</p>`;
+      html += `</div>`;
+      html += `<div style="text-align:center;margin-bottom:8px;">`;
+      html += `<p style="font-weight:600;margin:0;">${paperTemplate.examType || "Exam Type"}</p>`;
+      html += `<p style="font-size:13px;color:#4b5563;margin:2px 0 0;">Academic Year: ${paperTemplate.academicYear || "YYYY-YYYY"}</p>`;
+      html += `</div>`;
+      html += `<div style="display:flex;flex-wrap:wrap;font-size:12px;margin-bottom:8px;">`;
+      html += `<span style="margin-right:12px;"><strong>Class:</strong> ${paperTemplate.grade || "Grade X"}</span>`;
+      html += `<span style="margin-right:12px;"><strong>Subject:</strong> ${paperTemplate.subject || "Subject"}</span>`;
+      html += `<span style="margin-right:12px;"><strong>Duration:</strong> ${paperTemplate.duration || "-- hours"}</span>`;
+      html += `<span style="margin-right:12px;"><strong>Max Marks:</strong> ${paperTemplate.totalMarks || "--"}</span>`;
+      if (paperTemplate.date) {
+        html += `<span style="margin-right:12px;"><strong>Date:</strong> ${new Date(paperTemplate.date).toLocaleDateString()}</span>`;
+      }
+      html += `</div><hr style="margin:12px 0;" />`;
+    } else {
+      html += `<h1>${title}</h1>`;
+    }
+
+    html += `<ol>`;
     assignmentQuestions.forEach(q => {
       html += `<li>${q.richText ?? q.text}`;
       if (q.type === "MCQ" && q.options?.length) {
@@ -395,6 +644,16 @@ export default function App() {
     if (!moved) return;
     order.splice(dropIndex, 0, moved);
     updateAssignmentIds(order);
+
+    // Sync new order to backend
+    fetch(`http://localhost:3001/assignments/${activeAssignment.id}/reorder`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order }),
+    }).catch(err => {
+      console.error("Failed to reorder on server", err);
+    });
+
     setDraggingIndex(null); setDragOverIndex(null);
   }
 
@@ -411,6 +670,8 @@ export default function App() {
         select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236b7280'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; padding-right: 24px !important; }
         @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
+
+      <ToastStack toasts={toasts} />
 
       {editorMode && editorDraft && (
         <EditorModal
@@ -437,13 +698,24 @@ export default function App() {
 
           {/* ── Header ── */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexShrink: 0 }}>
-            <div>
-              <h1 style={{ margin: 0, fontFamily: "'Sora', sans-serif", fontSize: 22, fontWeight: 700, color: "#0f172a", letterSpacing: "-0.02em" }}>
-                Question Bank <span style={{ color: "#6366f1" }}>&</span> Assignment Builder
-              </h1>
-              <p style={{ margin: "6px 0 0", fontSize: 13, color: "#64748b" }}>
-                Curate assignments by reusing questions from a global bank. Drag to reorder and auto-save to your browser.
-              </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {onBack && (
+                <button
+                  type="button"
+                  onClick={onBack}
+                  style={{ ...secondaryBtnStyle, padding: "4px 10px", fontSize: 11 }}
+                >
+                  ← Back
+                </button>
+              )}
+              <div>
+                <h1 style={{ margin: 0, fontFamily: "'Sora', sans-serif", fontSize: 22, fontWeight: 700, color: "#0f172a", letterSpacing: "-0.02em" }}>
+                  Question Bank <span style={{ color: "#6366f1" }}>&</span> Assignment Builder
+                </h1>
+                <p style={{ margin: "6px 0 0", fontSize: 13, color: "#64748b" }}>
+                  Curate assignments by reusing questions from a global bank. Drag to reorder and auto-save to your browser.
+                </p>
+              </div>
             </div>
             <div style={{
               display: "flex", alignItems: "center", gap: 6, padding: "5px 14px",
@@ -454,6 +726,87 @@ export default function App() {
               <span style={{ fontSize: 11, fontWeight: 600, color: "#4f46e5", fontFamily: "'Sora', sans-serif" }}>By Shrayanshi</span>
             </div>
           </div>
+
+          {/* Optional question paper header template */}
+          {paperTemplate && (
+            <div
+              style={{
+                marginTop: 4,
+                marginBottom: 8,
+                borderRadius: 14,
+                border: "1px solid #e5e7eb",
+                padding: 12,
+                background: "#f9fafb",
+                fontSize: 11,
+              }}
+            >
+              <div
+                style={{
+                  textAlign: "center",
+                  borderBottom: "1px solid #e5e7eb",
+                  paddingBottom: 8,
+                  marginBottom: 8,
+                }}
+              >
+                <p style={{ fontWeight: 700, fontSize: 12, margin: 0 }}>
+                  {paperTemplate.schoolName || "School Name"}
+                </p>
+                <p style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>
+                  {paperTemplate.schoolAddress || "School Address"}
+                </p>
+              </div>
+              <div style={{ textAlign: "center", marginBottom: 8 }}>
+                <p style={{ fontWeight: 600, margin: 0 }}>
+                  {paperTemplate.examType || "Exam Type"}
+                </p>
+                <p style={{ fontSize: 11, color: "#4b5563", marginTop: 2 }}>
+                  Academic Year: {paperTemplate.academicYear || "YYYY-YYYY"}
+                </p>
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 4,
+                  marginBottom: 4,
+                }}
+              >
+                <div>
+                  <span style={{ color: "#6b7280" }}>Class: </span>
+                  {paperTemplate.grade || "Grade X"}
+                </div>
+                <div>
+                  <span style={{ color: "#6b7280" }}>Subject: </span>
+                  {paperTemplate.subject || "Subject"}
+                </div>
+                <div>
+                  <span style={{ color: "#6b7280" }}>Duration: </span>
+                  {paperTemplate.duration || "-- hours"}
+                </div>
+                <div>
+                  <span style={{ color: "#6b7280" }}>Max Marks: </span>
+                  {paperTemplate.totalMarks || "--"}
+                </div>
+                {paperTemplate.date && (
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <span style={{ color: "#6b7280" }}>Date: </span>
+                    {new Date(paperTemplate.date).toLocaleDateString()}
+                  </div>
+                )}
+              </div>
+              <div
+                style={{
+                  borderTop: "1px dashed #e5e7eb",
+                  paddingTop: 6,
+                  textAlign: "center",
+                }}
+              >
+                <span style={{ fontSize: 11, color: "#9ca3af" }}>
+                  Questions will appear below this header
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* ── Two-column layout — fills remaining height ── */}
           <div style={{
@@ -484,7 +837,7 @@ export default function App() {
                     />
                   ) : (
                     <div onClick={() => setEditingTitle(true)} style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", fontFamily: "'Sora', sans-serif", cursor: "pointer" }}>
-                      {activeAssignment?.name}
+                      {activeAssignment?.name || "Untitled Assignment"}
                     </div>
                   )}
                   <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>Drag questions to reorder.</div>
@@ -585,17 +938,48 @@ export default function App() {
           </div>
 
           {/* ── Footer ── */}
-          <div style={{
-            display: "flex", justifyContent: "space-between", alignItems: "center",
-            paddingTop: 12, borderTop: "1.5px dashed #e2e8f0", flexShrink: 0,
-          }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              paddingTop: 12,
+              borderTop: "1.5px dashed #e2e8f0",
+              flexShrink: 0,
+            }}
+          >
             <div style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}>
-              <span style={{ color: "#6366f1", fontWeight: 700 }}>{assignmentQuestions.length}</span> question{assignmentQuestions.length !== 1 ? "s" : ""}&nbsp;·&nbsp;
-              <span style={{ color: "#6366f1", fontWeight: 700 }}>{totalMarks}</span> total marks
+              <span style={{ color: "#6366f1", fontWeight: 700 }}>
+                {assignmentQuestions.length}
+              </span>{" "}
+              question{assignmentQuestions.length !== 1 ? "s" : ""}&nbsp;·&nbsp;
+              <span style={{ color: "#6366f1", fontWeight: 700 }}>
+                {totalMarks}
+              </span>{" "}
+              total marks
             </div>
-            <div style={{ display: "flex", gap: 7 }}>
-              <button onClick={exportPdf} style={{ ...primaryBtnStyle, padding: "5px 12px" }}>⬇ Download PDF</button>
-              <button onClick={exportDoc} style={{ ...secondaryBtnStyle, padding: "5px 12px" }}>⬇ Download .doc</button>
+            <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
+              {onGoHome && (
+                <button
+                  type="button"
+                  onClick={onGoHome}
+                  style={{ ...secondaryBtnStyle, padding: "5px 12px" }}
+                >
+                  Go to Home
+                </button>
+              )}
+              <button
+                onClick={exportPdf}
+                style={{ ...primaryBtnStyle, padding: "5px 12px" }}
+              >
+                ⬇ Download PDF
+              </button>
+              <button
+                onClick={exportDoc}
+                style={{ ...secondaryBtnStyle, padding: "5px 12px" }}
+              >
+                ⬇ Download .doc
+              </button>
             </div>
           </div>
 
