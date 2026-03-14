@@ -89,89 +89,34 @@ function App() {
         fetchJson("/api/papers", { cache: false }),
       ]);
 
-      // Build assignment docs from backend
-      const assignmentDocs = await Promise.all(
-        assignments.map(async (a) => {
-          try {
-            const full = await fetchJson(`/api/assignments/${a.id}`, {
-              cache: false,
-            });
-            const questions = full.questions || [];
-            const totalMarks = questions.reduce(
-              (s, q) => s + (q.marks || 0),
-              0,
-            );
-            return {
-              id: `assignment-${a.id}`,
-              kind: "assignment",
-              assignmentId: String(a.id),
-              title: a.name,
-              subject: a.subject || "",
-              questionCount: questions.length,
-              totalMarks,
-              createdAt: a.created_at,
-              lastModified: a.updated_at,
-            };
-          } catch {
-            return {
-              id: `assignment-${a.id}`,
-              kind: "assignment",
-              assignmentId: String(a.id),
-              title: a.name,
-              subject: a.subject || "",
-              questionCount: 0,
-              totalMarks: 0,
-              createdAt: a.created_at,
-              lastModified: a.updated_at,
-            };
-          }
-        }),
-      );
+      // Build assignment docs from backend - using question_count and total_marks from list response
+      const assignmentDocs = assignments.map((a) => ({
+        id: `assignment-${a.id}`,
+        kind: "assignment",
+        assignmentId: String(a.id),
+        title: a.name,
+        subject: a.subject || "",
+        questionCount: a.question_count || 0,
+        totalMarks: a.total_marks || 0,
+        createdAt: a.created_at,
+        lastModified: a.updated_at,
+      }));
 
-      // Build paper docs from backend (basic header + counts)
-      const paperDocs = await Promise.all(
-        papers.map(async (p) => {
-          try {
-            const full = await fetchJson(`/api/papers/${p.id}`, {
-              cache: false,
-            });
-            const questions = full.questions || [];
-            const totalMarks = questions.reduce(
-              (s, q) => s + (q.marks || 0),
-              0,
-            );
-            return {
-              id: `paper-${p.id}`,
-              kind: "paper",
-              paperId: String(p.id),
-              title: p.title,
-              subject: p.subject || "",
-              grade: p.grade || "",
-              examType: p.exam_type || "",
-              schoolName: p.school_name || "",
-              questionCount: questions.length,
-              totalMarks,
-              createdAt: p.created_at,
-              lastModified: p.updated_at,
-            };
-          } catch {
-            return {
-              id: `paper-${p.id}`,
-              kind: "paper",
-              paperId: String(p.id),
-              title: p.title,
-              subject: p.subject || "",
-              grade: p.grade || "",
-              examType: p.exam_type || "",
-              schoolName: p.school_name || "",
-              questionCount: 0,
-              totalMarks: 0,
-              createdAt: p.created_at,
-              lastModified: p.updated_at,
-            };
-          }
-        }),
-      );
+      // Build paper docs from backend - using question_count and total_marks from list response
+      const paperDocs = papers.map((p) => ({
+        id: `paper-${p.id}`,
+        kind: "paper",
+        paperId: String(p.id),
+        title: p.title,
+        subject: p.subject || "",
+        grade: p.grade || "",
+        examType: p.exam_type || "",
+        schoolName: p.school_name || "",
+        questionCount: p.question_count || 0,
+        totalMarks: p.total_marks || 0,
+        createdAt: p.created_at,
+        lastModified: p.updated_at,
+      }));
 
       setDocuments([...paperDocs, ...assignmentDocs]);
     } catch (err) {
@@ -188,8 +133,7 @@ function App() {
 
   useEffect(() => {
     if (view !== "paperBuilder" || !openPaperId || paperTemplate) return;
-    fetch(`/api/papers/${openPaperId}`)
-      .then((r) => r.json())
+    fetchJson(`/api/papers?id=${openPaperId}`)
       .then((paper) => {
         setPaperTemplate({
           schoolName: paper.school_name || "",
@@ -204,7 +148,8 @@ function App() {
         });
       })
       .catch(() => {});
-  }, [view, openPaperId, paperTemplate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, openPaperId]);
 
   const handleEditDocument = (id) => {
     const doc = documents.find((d) => d.id === id);
@@ -239,15 +184,14 @@ function App() {
     if (!doc) return;
     try {
       if (doc.kind === "paper") {
-        await fetch(`/api/papers/${doc.paperId}`, {
+        await fetch(`/api/papers?id=${doc.paperId}`, {
           method: "DELETE",
         });
         pushToast("Question paper deleted", "info");
       } else if (doc.kind === "assignment") {
-        await fetch(
-          `/api/assignments/${doc.assignmentId}`,
-          { method: "DELETE" },
-        );
+        await fetch(`/api/assignments?id=${doc.assignmentId}`, {
+          method: "DELETE",
+        });
         pushToast("Assignment deleted", "info");
       }
     } catch (err) {
@@ -347,13 +291,11 @@ function App() {
             setView("paperSetup");
           }}
           onCreateAssignment={async () => {
-            const name = window.prompt("Assignment name:", "New Assignment");
-            if (!name) return;
             try {
               const res = await fetch("/api/assignments", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name }),
+                body: JSON.stringify({ name: "Untitled Assignment" }),
               });
               if (!res.ok) throw new Error("Failed to create assignment");
               const a = await res.json();
