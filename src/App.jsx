@@ -1,18 +1,75 @@
 import { useState, useEffect } from "react";
-import { HomePage } from "./components/Home.new";
-import { CreateTypePage } from "./components/QuestionBank/CreateType";
-import { QuestionPaperSetup } from "./components/QuestionBank/QuestionPaperSetup";
-import QuestionBankApp from "./QuestionBankApp";
+import { HomePage } from "./pages/Home";
+import { CreateTypePage } from "./pages/CreateType";
+import { QuestionPaperSetup } from "./pages/QuestionPaperSetup";
+import QuestionBankApp from "./pages/QuestionBankApp";
 import { ToastStack } from "./components/ui/Toast";
 
+const DEFAULT_VIEW = "home";
+
+function parseHash() {
+  const hash = window.location.hash.slice(1) || "/";
+  const path = hash.startsWith("/") ? hash : `/${hash}`;
+  const parts = path.split("/").filter(Boolean);
+  if (parts[0] === "assignment" && parts[1]) {
+    return { view: "assignmentBuilder", assignmentId: parts[1] };
+  }
+  if (parts[0] === "paper" && parts[1]) {
+    return { view: "paperBuilder", paperId: parts[1] };
+  }
+  if (parts[0] === "create") return { view: "type" };
+  if (parts[0] === "paper-setup") return { view: "paperSetup" };
+  return { view: "home" };
+}
+
+function getHashForView(view, openAssignmentId, openPaperId) {
+  if (view === "assignmentBuilder" && openAssignmentId) {
+    return `#/assignment/${openAssignmentId}`;
+  }
+  if (view === "paperBuilder" && openPaperId) {
+    return `#/paper/${openPaperId}`;
+  }
+  if (view === "type") return "#/create";
+  if (view === "paperSetup") return "#/paper-setup";
+  return "#/";
+}
+
 function App() {
-  const [view, setView] = useState("home"); // 'home' | 'type' | 'paperSetup' | 'paperBuilder' | 'assignmentBuilder'
+  const [view, setView] = useState(DEFAULT_VIEW);
   const [paperTemplate, setPaperTemplate] = useState(null);
   const [openAssignmentId, setOpenAssignmentId] = useState(null);
+  const [openPaperId, setOpenPaperId] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [builderOrigin, setBuilderOrigin] = useState("home");
   const [toasts, setToasts] = useState([]);
+
+  useEffect(() => {
+    const fromHash = parseHash();
+    if (fromHash.view !== "home" || fromHash.assignmentId || fromHash.paperId) {
+      setView(fromHash.view);
+      if (fromHash.assignmentId) setOpenAssignmentId(fromHash.assignmentId);
+      if (fromHash.paperId) setOpenPaperId(fromHash.paperId);
+    }
+  }, []);
+
+  useEffect(() => {
+    const hash = getHashForView(view, openAssignmentId, openPaperId);
+    if (window.location.hash !== hash) {
+      window.history.replaceState(null, "", hash);
+    }
+  }, [view, openAssignmentId, openPaperId]);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      const fromHash = parseHash();
+      setView(fromHash.view);
+      setOpenAssignmentId(fromHash.assignmentId || null);
+      setOpenPaperId(fromHash.paperId || null);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
   const pushToast = (message, variant = "info") => {
     const id =
@@ -130,18 +187,35 @@ function App() {
   };
 
   useEffect(() => {
-    if (view === "home") {
-      reloadDocuments();
-    }
+    if (view === "home") reloadDocuments();
   }, [view]);
+
+  useEffect(() => {
+    if (view !== "paperBuilder" || !openPaperId || paperTemplate) return;
+    fetch(`http://localhost:3001/papers/${openPaperId}`)
+      .then((r) => r.json())
+      .then((paper) => {
+        setPaperTemplate({
+          schoolName: paper.school_name || "",
+          schoolAddress: paper.school_address || "",
+          grade: paper.grade || "",
+          subject: paper.subject || "",
+          examType: paper.exam_type || "",
+          duration: paper.duration || "",
+          totalMarks: paper.total_marks ?? "",
+          academicYear: paper.academic_year || "",
+          date: paper.exam_date || "",
+        });
+      })
+      .catch(() => {});
+  }, [view, openPaperId, paperTemplate]);
 
   const handleEditDocument = (id) => {
     const doc = documents.find((d) => d.id === id);
     if (!doc) return;
+    setBuilderOrigin("home");
 
     if (doc.kind === "paper") {
-      setBuilderOrigin("home");
-      // For now, just open the assignment-style builder with paperTemplate header
       setPaperTemplate({
         schoolName: doc.schoolName,
         schoolAddress: "",
@@ -153,11 +227,12 @@ function App() {
         academicYear: "",
         date: "",
       });
+      setOpenPaperId(doc.paperId);
       setOpenAssignmentId(null);
       setView("paperBuilder");
     } else {
-      setBuilderOrigin("home");
       setPaperTemplate(null);
+      setOpenPaperId(null);
       setOpenAssignmentId(doc.assignmentId);
       setView("assignmentBuilder");
     }
@@ -185,17 +260,41 @@ function App() {
     reloadDocuments();
   };
 
-  // View routing
   if (view === "paperSetup") {
     return (
       <>
         <QuestionPaperSetup
           initialTemplate={paperTemplate}
           onBack={() => setView("type")}
-          onContinue={(template) => {
-            setPaperTemplate(template);
+          onContinue={async (template) => {
             setBuilderOrigin("paperSetup");
-            setView("paperBuilder");
+            try {
+              const res = await fetch("http://localhost:3001/papers", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  title: template.subject || "Question Paper",
+                  schoolName: template.schoolName || null,
+                  schoolAddress: template.schoolAddress || null,
+                  grade: template.grade || null,
+                  subject: template.subject || null,
+                  examType: template.examType || null,
+                  duration: template.duration || null,
+                  totalMarks: template.totalMarks ? Number(template.totalMarks) : null,
+                  academicYear: template.academicYear || null,
+                  examDate: template.date || null,
+                }),
+              });
+              if (!res.ok) throw new Error("Failed to create paper");
+              const paper = await res.json();
+              setPaperTemplate(template);
+              setOpenPaperId(String(paper.id));
+              setOpenAssignmentId(null);
+              setView("paperBuilder");
+            } catch (err) {
+              console.error(err);
+              alert("Failed to create question paper on server.");
+            }
           }}
         />
         <ToastStack toasts={toasts} />
@@ -208,9 +307,16 @@ function App() {
       <>
         <QuestionBankApp
           paperTemplate={paperTemplate}
-          onBack={() => setView(builderOrigin)}
-          openAssignmentId={openAssignmentId}
-          onGoHome={() => setView("home")}
+          onBack={() => {
+            setOpenPaperId(null);
+            setView(builderOrigin);
+          }}
+          openAssignmentId={openPaperId ? null : openAssignmentId}
+          openPaperId={openPaperId}
+          onGoHome={() => {
+            setOpenPaperId(null);
+            setView("home");
+          }}
         />
         <ToastStack toasts={toasts} />
       </>
@@ -223,6 +329,7 @@ function App() {
         <QuestionBankApp
           onBack={() => setView(builderOrigin)}
           openAssignmentId={openAssignmentId}
+          openPaperId={null}
           onGoHome={() => setView("home")}
         />
         <ToastStack toasts={toasts} />
@@ -237,29 +344,30 @@ function App() {
           onBack={() => setView("home")}
           onCreateQuestionPaper={() => {
             setBuilderOrigin("type");
+            setPaperTemplate(null);
+            setOpenPaperId(null);
             setView("paperSetup");
           }}
-          onCreateAssignment={() => {
+          onCreateAssignment={async () => {
             const name = window.prompt("Assignment name:", "New Assignment");
             if (!name) return;
-            (async () => {
-              try {
-                const res = await fetch("http://localhost:3001/assignments", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ name }),
-                });
-                if (!res.ok) throw new Error("Failed to create assignment");
-                const a = await res.json();
-                setPaperTemplate(null);
-                setOpenAssignmentId(String(a.id));
-                setBuilderOrigin("type");
-                setView("assignmentBuilder");
-              } catch (err) {
-                console.error(err);
-                alert("Failed to create assignment on server.");
-              }
-            })();
+            try {
+              const res = await fetch("http://localhost:3001/assignments", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name }),
+              });
+              if (!res.ok) throw new Error("Failed to create assignment");
+              const a = await res.json();
+              setPaperTemplate(null);
+              setOpenPaperId(null);
+              setOpenAssignmentId(String(a.id));
+              setBuilderOrigin("type");
+              setView("assignmentBuilder");
+            } catch (err) {
+              console.error(err);
+              alert("Failed to create assignment on server.");
+            }
           }}
         />
         <ToastStack toasts={toasts} />
@@ -272,7 +380,11 @@ function App() {
     <>
       <HomePage
         documents={documents}
-        onCreateNew={() => setView("type")}
+        onCreateNew={() => {
+          setOpenPaperId(null);
+          setOpenAssignmentId(null);
+          setView("type");
+        }}
         onEditDocument={handleEditDocument}
         onDeleteDocument={handleDeleteDocument}
         loading={loadingDocs}

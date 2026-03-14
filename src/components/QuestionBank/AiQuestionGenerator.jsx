@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { panelStyle, primaryBtnStyle, inputStyle } from "./styles";
+import { panelStyle, inputStyle } from "./styles";
+import { Button } from "../ui/Button";
 
 /**
  * AI Question Generator panel.
@@ -250,19 +251,14 @@ export function AiQuestionGenerator({ onQuestionsGenerated }) {
 
           {/* Row 3: full-width button */}
           <div>
-            <button
+            <Button
               type="submit"
               disabled={isLoading}
               style={{
-                ...primaryBtnStyle,
                 width: "100%",
                 justifyContent: "center",
-                background: isLoading ? "#a5b4fc" : "linear-gradient(135deg, #7c3aed, #6366f1)",
-                boxShadow: "0 6px 18px rgba(99,102,241,0.3)",
-                padding: "6px 12px",
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
+                background: isLoading ? "#a5b4fc" : undefined,
+                boxShadow: isLoading ? "none" : "0 6px 18px rgba(99,102,241,0.3)",
               }}
             >
               {isLoading ? (
@@ -282,7 +278,7 @@ export function AiQuestionGenerator({ onQuestionsGenerated }) {
               ) : (
                 "Generate Questions"
               )}
-            </button>
+            </Button>
           </div>
 
           {error && (

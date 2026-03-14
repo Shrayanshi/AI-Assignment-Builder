@@ -1,15 +1,14 @@
-import { useState, useEffect } from "react";
-import { EditorModal } from "./components/QuestionBank/EditorModal";
-import { AssignmentRow } from "./components/QuestionBank/AssignmentRow";
-import { QuestionCard } from "./components/QuestionBank/QuestionCard";
-import { AiQuestionGenerator } from "./components/QuestionBank/AiQuestionGenerator";
-import { ToastStack } from "./components/ui/Toast";
+import { useState, useEffect, useMemo } from "react";
+import { EditorModal } from "../components/QuestionBank/EditorModal";
+import { AssignmentRow } from "../components/QuestionBank/AssignmentRow";
+import { QuestionCard } from "../components/QuestionBank/QuestionCard";
+import { AiQuestionGenerator } from "../components/QuestionBank/AiQuestionGenerator";
+import { ToastStack } from "../components/ui/Toast";
+import { Button } from "../components/ui/Button";
 import {
   panelStyle,
-  primaryBtnStyle,
-  secondaryBtnStyle,
   inputStyle,
-} from "./components/QuestionBank/styles";
+} from "../components/QuestionBank/styles";
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -18,7 +17,7 @@ const STORAGE_KEY = "qb-assignment-state-v2";
 const SAMPLE_QUESTIONS = [
   {
     id: "q1", type: "MCQ", marks: 4, difficulty: 3,
-    topic: "Quadratic Equations", rubric: "Graphs – Rubric 1",
+    topic: "Quadratic Equations", subject: "Mathematics",
     text: "In the quaint village of Silverwood, an unprecedented explosion in the glowworm population causes the meadow's brightness to double every hour. If the brightness at 6 PM is represented by I(0) and follows I(t) = I(0) · 2^t, what is the brightness at 9 PM?",
     richText: "In the quaint village of Silverwood, an unprecedented explosion in the glowworm population causes the meadow's brightness to double every hour. If the brightness at 6 PM is represented by I(0) and follows I(t) = I(0) · 2^t, what is the brightness at 9 PM?",
     options: ["I(0)", "4·I(0)", "8·I(0)", "16·I(0)"],
@@ -26,7 +25,7 @@ const SAMPLE_QUESTIONS = [
   },
   {
     id: "q2", type: "MCQ", marks: 2, difficulty: 2,
-    topic: "Linear Functions", rubric: "Slope & Intercept – Rubric 1",
+    topic: "Linear Functions", subject: "Mathematics",
     text: "A bakery sells loaves of bread for a fixed price plus a one-time packaging fee. Which of the following graphs best represents this relationship between number of loaves and total cost?",
     richText: "A bakery sells loaves of bread for a fixed price plus a one-time packaging fee. Which of the following graphs best represents this relationship between number of loaves and total cost?",
     options: ["A curve starting at the origin", "A line through the origin", "A horizontal line", "A line with a positive y-intercept"],
@@ -34,13 +33,13 @@ const SAMPLE_QUESTIONS = [
   },
   {
     id: "q3", type: "FRQ", marks: 5, difficulty: 4,
-    topic: "Calculus – Limits", rubric: "Conceptual Understanding – Rubric 2",
+    topic: "Calculus – Limits", subject: "Mathematics",
     text: "Explain, in your own words, what it means for the limit of f(x) as x approaches a to exist. Provide an example where the limit exists but f(a) is undefined.",
     richText: "Explain, in your own words, what it means for the limit of f(x) as x approaches a to exist. Provide an example where the limit exists but f(a) is undefined.",
   },
   {
     id: "q4", type: "MCQ", marks: 3, difficulty: 1,
-    topic: "Statistics – Mean", rubric: "Basic Skills – Rubric 1",
+    topic: "Statistics – Mean", subject: "Mathematics",
     text: "A class of 5 students scores 10, 12, 18, 20 and 20 on a quiz. What is the mean score?",
     richText: "A class of 5 students scores 10, 12, 18, 20 and 20 on a quiz. What is the mean score?",
     options: ["14", "16", "18", "20"],
@@ -51,7 +50,7 @@ const SAMPLE_QUESTIONS = [
 const AI_QUESTIONS = [
   {
     id: "ai-1", type: "MCQ", marks: 4, difficulty: 3,
-    topic: "Sets & Power Sets", rubric: "Combinatorics – Rubric",
+    topic: "Sets & Power Sets", subject: "Mathematics",
     text: "I have a set with 105 elements. How many elements will the power set of this set have?",
     richText: "I have a set with 105 elements. How many elements will the power set of this set have?",
     options: ["105", "2^105", "105²", "105!"],
@@ -59,7 +58,7 @@ const AI_QUESTIONS = [
   },
   {
     id: "ai-2", type: "MCQ", marks: 2, difficulty: 1,
-    topic: "Set Notation", rubric: "Foundations – Rubric",
+    topic: "Set Notation", subject: "Mathematics",
     text: "What notation is typically used to denote the power set of a set A?",
     richText: "What notation is typically used to denote the power set of a set A?",
     options: ["P(A)", "A*", "|A|", "A^"],
@@ -67,13 +66,13 @@ const AI_QUESTIONS = [
   },
   {
     id: "ai-3", type: "FRQ", marks: 5, difficulty: 4,
-    topic: "Set Theory – Complements", rubric: "Problem Solving – Rubric",
+    topic: "Set Theory – Complements", subject: "Mathematics",
     text: "X, Y and Z are 3 sets, and U is the universal set, such that n(U) = 800, n(X) = 200, n(Y) = 300 and n(X∩Y) = 100. Find n(X'∩Y'). Explain your reasoning.",
     richText: "X, Y and Z are 3 sets, and U is the universal set, such that n(U) = 800, n(X) = 200, n(Y) = 300 and n(X∩Y) = 100. Find n(X'∩Y'). Explain your reasoning.",
   },
   {
     id: "ai-4", type: "MCQ", marks: 3, difficulty: 2,
-    topic: "Geometry – Angles", rubric: "Visualization – Rubric",
+    topic: "Geometry – Angles", subject: "Mathematics",
     text: "The earth–moon distance is about 60 earth radii. Approximately what is the angular diameter of the earth as seen from the moon (in degrees)?",
     richText: "The earth–moon distance is about 60 earth radii. Approximately what is the angular diameter of the earth as seen from the moon (in degrees)?",
     options: ["~1°", "~2°", "~5°", "~10°"],
@@ -149,12 +148,13 @@ function loadInitialState() {
   };
 }
 
-export default function App({ paperTemplate, onBack, openAssignmentId, onCreateDocument, onGoHome }) {
+export default function App({ paperTemplate, onBack, openAssignmentId, openPaperId, onCreateDocument, onGoHome }) {
+  const isPaperMode = Boolean(openPaperId);
   const initial = loadInitialState();
   const [questions, setQuestions] = useState(initial.questions);
   const [assignments, setAssignments] = useState(initial.assignments);
   const [activeAssignmentId, setActiveAssignmentId] = useState(
-    openAssignmentId || initial.activeAssignmentId
+    openPaperId || openAssignmentId || initial.activeAssignmentId
   );
   const [search, setSearch] = useState(initial.search);
   const [activeQuestionId, setActiveQuestionId] = useState(
@@ -167,6 +167,11 @@ export default function App({ paperTemplate, onBack, openAssignmentId, onCreateD
   const [aiLoading, setAiLoading] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [toasts, setToasts] = useState([]);
+  const [filterBankOpen, setFilterBankOpen] = useState(false);
+  const [filterType, setFilterType] = useState("");
+  const [filterDifficulty, setFilterDifficulty] = useState("");
+  const [filterTopic, setFilterTopic] = useState("");
+  const [filterSubject, setFilterSubject] = useState("");
 
   function pushToast(message, variant = "info") {
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -176,25 +181,39 @@ export default function App({ paperTemplate, onBack, openAssignmentId, onCreateD
     }, 2500);
   }
 
-  // Load from backend once on mount, then fall back to local storage if unavailable.
+  // Load from backend once on mount.
   useEffect(() => {
     async function loadFromBackend() {
       try {
-        const [qRes, aRes] = await Promise.all([
-          fetch("http://localhost:3001/questions"),
-          fetch("http://localhost:3001/assignments"),
-        ]);
-        if (!qRes.ok || !aRes.ok) return;
-
-        const [qs, as] = await Promise.all([qRes.json(), aRes.json()]);
-
-        // Normalize question IDs to strings and keep options
+        const qRes = await fetch("http://localhost:3001/questions");
+        if (!qRes.ok) return;
+        const qs = await qRes.json();
         const normalizedQs = qs.map((q) => ({
           ...q,
           id: String(q.id),
           richText: q.text,
         }));
+        setQuestions(normalizedQs);
 
+        if (openPaperId) {
+          const paperRes = await fetch(`http://localhost:3001/papers/${openPaperId}`);
+          if (!paperRes.ok) return;
+          const paper = await paperRes.json();
+          const qIds = (paper.questions || []).map((q) => String(q.id));
+          const paperAsAssignment = {
+            id: String(paper.id),
+            name: paper.title || "Question Paper",
+            questionIds: qIds,
+          };
+          setAssignments([paperAsAssignment]);
+          setActiveAssignmentId(String(paper.id));
+          setActiveQuestionId(qIds[0] ?? normalizedQs[0]?.id ?? null);
+          return;
+        }
+
+        const aRes = await fetch("http://localhost:3001/assignments");
+        if (!aRes.ok) return;
+        const as = await aRes.json();
         const enrichedAssignments = await Promise.all(
           as.map(async (a) => {
             try {
@@ -209,28 +228,24 @@ export default function App({ paperTemplate, onBack, openAssignmentId, onCreateD
           }),
         );
 
-        setQuestions(normalizedQs);
         setAssignments(enrichedAssignments);
-
         const first = enrichedAssignments[0];
         const nextAssignmentId =
           openAssignmentId || first?.id || initial.activeAssignmentId;
-
         setActiveAssignmentId(nextAssignmentId);
-
         const firstQuestionId =
           enrichedAssignments.find((a) => a.id === nextAssignmentId)?.questionIds[0] ??
           normalizedQs[0]?.id ??
           null;
         setActiveQuestionId(firstQuestionId);
       } catch (err) {
-        console.error("Failed to load from backend, using local state", err);
+        console.error("Failed to load from backend", err);
       }
     }
 
     loadFromBackend();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+  }, [openPaperId, openAssignmentId]);
 
   useEffect(() => {
     try {
@@ -239,20 +254,36 @@ export default function App({ paperTemplate, onBack, openAssignmentId, onCreateD
   }, [questions, assignments, activeAssignmentId, search]);
 
   useEffect(() => {
-    if (openAssignmentId) {
-      setActiveAssignmentId(openAssignmentId);
-    }
-  }, [openAssignmentId]);
+    if (openPaperId) setActiveAssignmentId(openPaperId);
+    else if (openAssignmentId) setActiveAssignmentId(openAssignmentId);
+  }, [openPaperId, openAssignmentId]);
 
   const activeAssignment = assignments.find(a => a.id === activeAssignmentId) ?? null;
   const assignmentQuestions = (activeAssignment?.questionIds ?? [])
     .map(id => questions.find(q => q.id === id))
     .filter(Boolean);
   const selectedIds = new Set(activeAssignment?.questionIds ?? []);
-  const filteredQuestions = questions.filter(q =>
-    !search.trim() || q.text.toLowerCase().includes(search.trim().toLowerCase())
-  );
+
+  const bankFilterFields = useMemo(() => {
+    const topics = [...new Set(questions.map((q) => q.topic).filter(Boolean))].sort();
+    const subjects = [...new Set(questions.map((q) => q.subject).filter(Boolean))].sort();
+    const difficulties = [1, 2, 3, 4, 5];
+    return { topics, subjects, difficulties };
+  }, [questions]);
+
+  const filteredQuestions = useMemo(() => {
+    return questions.filter((q) => {
+      if (search.trim() && !q.text?.toLowerCase().includes(search.trim().toLowerCase())) return false;
+      if (filterType && q.type !== filterType) return false;
+      if (filterDifficulty !== "" && (q.difficulty == null || Number(q.difficulty) !== Number(filterDifficulty))) return false;
+      if (filterTopic && q.topic !== filterTopic) return false;
+      if (filterSubject && q.subject !== filterSubject) return false;
+      return true;
+    });
+  }, [questions, search, filterType, filterDifficulty, filterTopic, filterSubject]);
+
   const totalMarks = assignmentQuestions.reduce((s, q) => s + (q.marks || 0), 0);
+  const hasBankFilter = !!(filterType || filterDifficulty !== "" || filterTopic || filterSubject);
   const [titleDraft, setTitleDraft] = useState(activeAssignment?.name ?? "");
 
   useEffect(() => {
@@ -265,37 +296,53 @@ export default function App({ paperTemplate, onBack, openAssignmentId, onCreateD
 
   async function toggleQuestion(qid) {
     if (!activeAssignment) return;
-    const assignmentId = activeAssignment.id;
+    const targetId = activeAssignment.id;
     const already = selectedIds.has(qid);
 
-    // Optimistic local update
     if (already) {
       updateAssignmentIds(activeAssignment.questionIds.filter(id => id !== qid));
-      pushToast("Question removed from assignment", "info");
+      pushToast(isPaperMode ? "Question removed from paper" : "Question removed from assignment", "info");
     } else {
       updateAssignmentIds([...activeAssignment.questionIds, qid]);
-      pushToast("Question added to assignment", "success");
+      pushToast(isPaperMode ? "Question added to paper" : "Question added to assignment", "success");
     }
 
-    // Sync to backend
     try {
-      if (already) {
-        await fetch(
-          `http://localhost:3001/assignments/${assignmentId}/questions/${qid}`,
-          { method: "DELETE" },
-        );
+      if (isPaperMode) {
+        if (already) {
+          await fetch(
+            `http://localhost:3001/papers/${targetId}/questions/${qid}`,
+            { method: "DELETE" },
+          );
+        } else {
+          await fetch(
+            `http://localhost:3001/papers/${targetId}/questions`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ questionId: qid }),
+            },
+          );
+        }
       } else {
-        await fetch(
-          `http://localhost:3001/assignments/${assignmentId}/questions`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ questionId: qid }),
-          },
-        );
+        if (already) {
+          await fetch(
+            `http://localhost:3001/assignments/${targetId}/questions/${qid}`,
+            { method: "DELETE" },
+          );
+        } else {
+          await fetch(
+            `http://localhost:3001/assignments/${targetId}/questions`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ questionId: qid }),
+            },
+          );
+        }
       }
     } catch (err) {
-      console.error("Failed to sync assignment questions", err);
+      console.error("Failed to sync questions", err);
     }
   }
 
@@ -331,7 +378,7 @@ export default function App({ paperTemplate, onBack, openAssignmentId, onCreateD
       }
       : {
         id: null, type: "MCQ", marks: 4, difficulty: 3,
-        topic: "", rubric: "", text: "", richText: "",
+        topic: "", subject: "", text: "", richText: "",
         options: ["", "", "", ""], correctIndex: null,
       }
     );
@@ -370,9 +417,10 @@ export default function App({ paperTemplate, onBack, openAssignmentId, onCreateD
             marks: finalDraft.marks,
             difficulty: finalDraft.difficulty,
             topic: finalDraft.topic,
-            rubric: finalDraft.rubric,
+            subject: finalDraft.subject,
             text: finalDraft.text,
             options: finalDraft.options,
+            correctIndex: finalDraft.correctIndex,
           }),
         });
         if (!res.ok) throw new Error("Failed to create question");
@@ -384,16 +432,27 @@ export default function App({ paperTemplate, onBack, openAssignmentId, onCreateD
         if (activeAssignment) {
           updateAssignmentIds([...activeAssignment.questionIds, id]);
           try {
-            await fetch(
-              `http://localhost:3001/assignments/${activeAssignment.id}/questions`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ questionId: id }),
-              },
-            );
+            if (isPaperMode) {
+              await fetch(
+                `http://localhost:3001/papers/${activeAssignment.id}/questions`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ questionId: id }),
+                },
+              );
+            } else {
+              await fetch(
+                `http://localhost:3001/assignments/${activeAssignment.id}/questions`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ questionId: id }),
+                },
+              );
+            }
           } catch (err) {
-            console.error("Failed to link question to assignment", err);
+            console.error("Failed to link question", err);
           }
         }
         setActiveQuestionId(id);
@@ -415,9 +474,10 @@ export default function App({ paperTemplate, onBack, openAssignmentId, onCreateD
               marks: finalDraft.marks,
               difficulty: finalDraft.difficulty,
               topic: finalDraft.topic,
-              rubric: finalDraft.rubric,
+              subject: finalDraft.subject,
               text: finalDraft.text,
               options: finalDraft.options,
+              correctIndex: finalDraft.correctIndex,
             }),
           },
         );
@@ -508,7 +568,7 @@ export default function App({ paperTemplate, onBack, openAssignmentId, onCreateD
           difficulty:
             q.difficulty != null ? Number(q.difficulty) || 3 : 3,
           topic: q.topic || "",
-          rubric: q.rubric || "",
+          subject: q.subject || "",
           text: q.text || "",
           richText: q.text || "",
           options: isMCQ ? options : undefined,
@@ -645,8 +705,10 @@ export default function App({ paperTemplate, onBack, openAssignmentId, onCreateD
     order.splice(dropIndex, 0, moved);
     updateAssignmentIds(order);
 
-    // Sync new order to backend
-    fetch(`http://localhost:3001/assignments/${activeAssignment.id}/reorder`, {
+    const url = isPaperMode
+      ? `http://localhost:3001/papers/${activeAssignment.id}/reorder`
+      : `http://localhost:3001/assignments/${activeAssignment.id}/reorder`;
+    fetch(url, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ order }),
@@ -700,13 +762,9 @@ export default function App({ paperTemplate, onBack, openAssignmentId, onCreateD
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexShrink: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               {onBack && (
-                <button
-                  type="button"
-                  onClick={onBack}
-                  style={{ ...secondaryBtnStyle, padding: "4px 10px", fontSize: 11 }}
-                >
+                <Button variant="secondary" onClick={onBack} style={{ padding: "8px 14px", minHeight: "auto" }}>
                   ← Back
-                </button>
+                </Button>
               )}
               <div>
                 <h1 style={{ margin: 0, fontFamily: "'Sora', sans-serif", fontSize: 22, fontWeight: 700, color: "#0f172a", letterSpacing: "-0.02em" }}>
@@ -829,7 +887,16 @@ export default function App({ paperTemplate, onBack, openAssignmentId, onCreateD
                       autoFocus
                       onChange={e => setTitleDraft(e.target.value)}
                       onBlur={() => {
-                        if (titleDraft.trim()) setAssignments(prev => prev.map(a => a.id === activeAssignmentId ? { ...a, name: titleDraft } : a));
+                        if (titleDraft.trim()) {
+                          setAssignments(prev => prev.map(a => a.id === activeAssignmentId ? { ...a, name: titleDraft } : a));
+                          if (isPaperMode && activeAssignmentId) {
+                            fetch(`http://localhost:3001/papers/${activeAssignmentId}`, {
+                              method: "PUT",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ title: titleDraft.trim() }),
+                            }).catch(err => console.error("Failed to update paper title", err));
+                          }
+                        }
                         setEditingTitle(false);
                       }}
                       onKeyDown={e => { if (e.key === "Enter") e.target.blur(); }}
@@ -837,21 +904,23 @@ export default function App({ paperTemplate, onBack, openAssignmentId, onCreateD
                     />
                   ) : (
                     <div onClick={() => setEditingTitle(true)} style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", fontFamily: "'Sora', sans-serif", cursor: "pointer" }}>
-                      {activeAssignment?.name || "Untitled Assignment"}
+                      {activeAssignment?.name || (isPaperMode ? "Question Paper" : "Untitled Assignment")}
                     </div>
                   )}
                   <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>Drag questions to reorder.</div>
                 </div>
-                <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "nowrap" }}>
-                  <select
-                    value={activeAssignmentId ?? ""}
-                    onChange={e => setActiveAssignmentId(e.target.value)}
-                    style={{ ...inputStyle, fontSize: 11, padding: "4px 24px 4px 8px", maxWidth: 130 }}
-                  >
-                    {assignments.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-                  <button onClick={createAssignment} style={{ ...primaryBtnStyle, padding: "4px 10px" }}>New</button>
-                </div>
+                {!isPaperMode && (
+                  <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "nowrap" }}>
+                    <select
+                      value={activeAssignmentId ?? ""}
+                      onChange={e => setActiveAssignmentId(e.target.value)}
+                      style={{ ...inputStyle, fontSize: 12, padding: "8px 24px 8px 8px", maxWidth: 130 }}
+                    >
+                      {assignments.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                    <Button onClick={createAssignment} style={{ padding: "8px 14px", minHeight: "auto" }}>New</Button>
+                  </div>
+                )}
               </div>
 
               {/* Scrollable list */}
@@ -894,32 +963,129 @@ export default function App({ paperTemplate, onBack, openAssignmentId, onCreateD
                     <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", fontFamily: "'Sora', sans-serif" }}>Question Bank</div>
                     <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>Search, create, edit or AI-suggest questions.</div>
                   </div>
-                  <button onClick={() => openEditor("create", null)} style={{ ...primaryBtnStyle, padding: "5px 12px" }}>
+                  <Button onClick={() => openEditor("create", null)} style={{ padding: "8px 14px", minHeight: "auto" }}>
                     + New Question
-                  </button>
+                  </Button>
                 </div>
 
-                <input
-                  type="text"
-                  placeholder="Search questions…"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  style={{
-                    width: "100%", border: "1.5px solid #e2e8f0", borderRadius: 999,
-                    padding: "7px 14px", fontSize: 12, outline: "none",
-                    fontFamily: "inherit", transition: "border-color 0.15s, box-shadow 0.15s",
-                    color: "#0f172a", background: "#fff",
-                  }}
-                  onFocus={e => { e.target.style.borderColor = "#6366f1"; e.target.style.boxShadow = "0 0 0 1px rgba(99,102,241,0.4)"; }}
-                  onBlur={e => { e.target.style.borderColor = "#e2e8f0"; e.target.style.boxShadow = "none"; }}
-                />
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input
+                    type="text"
+                    placeholder="Search questions…"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    style={{
+                      flex: 1,
+                      border: "1.5px solid #e2e8f0",
+                      borderRadius: 999,
+                      padding: "7px 14px",
+                      fontSize: 12,
+                      outline: "none",
+                      fontFamily: "inherit",
+                      transition: "border-color 0.15s, box-shadow 0.15s",
+                      color: "#0f172a",
+                      background: "#fff",
+                    }}
+                    onFocus={e => { e.target.style.borderColor = "#6366f1"; e.target.style.boxShadow = "0 0 0 1px rgba(99,102,241,0.4)"; }}
+                    onBlur={e => { e.target.style.borderColor = "#e2e8f0"; e.target.style.boxShadow = "none"; }}
+                  />
+                  <Button
+                    variant="secondary"
+                    type="button"
+                    onClick={() => setFilterBankOpen((o) => !o)}
+                    title="Filter by type, difficulty, topic, subject"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: 40,
+                      height: 40,
+                      minHeight: 40,
+                      padding: 0,
+                      background: hasBankFilter ? "#eef2ff" : "#fff",
+                      color: hasBankFilter ? "#4f46e5" : "#64748b",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                    </svg>
+                  </Button>
+                </div>
+                {filterBankOpen && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      padding: 10,
+                      borderRadius: 10,
+                      border: "1px solid #e2e8f0",
+                      background: "#f8fafc",
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 10,
+                      alignItems: "flex-end",
+                    }}
+                  >
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: "#64748b" }}>Type</span>
+                      <select
+                        value={filterType}
+                        onChange={e => setFilterType(e.target.value)}
+                        style={{ ...inputStyle, padding: "4px 8px", fontSize: 11, minWidth: 80 }}
+                      >
+                        <option value="">All</option>
+                        <option value="MCQ">MCQ</option>
+                        <option value="FRQ">FRQ</option>
+                      </select>
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: "#64748b" }}>Difficulty</span>
+                      <select
+                        value={filterDifficulty}
+                        onChange={e => setFilterDifficulty(e.target.value)}
+                        style={{ ...inputStyle, padding: "4px 8px", fontSize: 11, minWidth: 80 }}
+                      >
+                        <option value="">All</option>
+                        {bankFilterFields.difficulties.map((d) => (
+                          <option key={d} value={d}>{d}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: "#64748b" }}>Topic</span>
+                      <select
+                        value={filterTopic}
+                        onChange={e => setFilterTopic(e.target.value)}
+                        style={{ ...inputStyle, padding: "4px 8px", fontSize: 11, minWidth: 120 }}
+                      >
+                        <option value="">All</option>
+                        {bankFilterFields.topics.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: "#64748b" }}>Subject</span>
+                      <select
+                        value={filterSubject}
+                        onChange={e => setFilterSubject(e.target.value)}
+                        style={{ ...inputStyle, padding: "4px 8px", fontSize: 11, minWidth: 120 }}
+                      >
+                        <option value="">All</option>
+                        {bankFilterFields.subjects.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                )}
               </div>
 
               {/* ── Only the card list scrolls ── */}
               <div style={{ flex: 1, overflowY: "auto", minHeight: 0, paddingRight: 3 }}>
                 {filteredQuestions.length === 0 ? (
                   <div style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", marginTop: 16 }}>
-                    No questions match your search.
+                    {questions.length === 0 ? "No questions yet." : "No questions match your search or filter."}
                   </div>
                 ) : filteredQuestions.map(q => (
                   <QuestionCard
@@ -958,28 +1124,18 @@ export default function App({ paperTemplate, onBack, openAssignmentId, onCreateD
               </span>{" "}
               total marks
             </div>
-            <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               {onGoHome && (
-                <button
-                  type="button"
-                  onClick={onGoHome}
-                  style={{ ...secondaryBtnStyle, padding: "5px 12px" }}
-                >
+                <Button variant="secondary" onClick={onGoHome} style={{ padding: "8px 14px", minHeight: "auto" }}>
                   Go to Home
-                </button>
+                </Button>
               )}
-              <button
-                onClick={exportPdf}
-                style={{ ...primaryBtnStyle, padding: "5px 12px" }}
-              >
+              <Button onClick={exportPdf} style={{ padding: "8px 14px", minHeight: "auto" }}>
                 ⬇ Download PDF
-              </button>
-              <button
-                onClick={exportDoc}
-                style={{ ...secondaryBtnStyle, padding: "5px 12px" }}
-              >
+              </Button>
+              <Button variant="secondary" onClick={exportDoc} style={{ padding: "8px 14px", minHeight: "auto" }}>
                 ⬇ Download .doc
-              </button>
+              </Button>
             </div>
           </div>
 

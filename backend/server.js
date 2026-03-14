@@ -93,6 +93,19 @@ db.serialize(() => {
       FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
     )
   `);
+
+  // Add correct_index for MCQ correct answer (ignore if column already exists)
+  db.run(`ALTER TABLE questions ADD COLUMN correct_index INTEGER`, (err) => {
+    if (err && !/duplicate column/i.test(err.message)) console.error(err);
+  });
+  // Add subject (replaces rubric) for questions
+  db.run(`ALTER TABLE questions ADD COLUMN subject TEXT`, (err) => {
+    if (err && !/duplicate column/i.test(err.message)) console.error(err);
+  });
+  // Backfill subject from rubric for existing rows
+  db.run(`UPDATE questions SET subject = rubric WHERE subject IS NULL AND rubric IS NOT NULL`, (err) => {
+    if (err) console.error(err);
+  });
 });
 
 function runAsync(sql, params = []) {
@@ -160,7 +173,7 @@ Output format rules (STRICT):
     "marks": <number 2–6>,
     "difficulty": <number 1–5>,
     "topic": "<string>",
-    "rubric": "<short phrase — what the question assesses>",
+    "subject": "<e.g. Mathematics, Science>",
     "text": "<full question stem>",
     "options": string[] | null,
     "correctIndex": number | null
@@ -287,10 +300,10 @@ async function generateQuestionsWithGemini(params) {
         typeof q.topic === "string" && q.topic.trim()
           ? q.topic.trim()
           : params.topic || "General",
-      rubric:
-        typeof q.rubric === "string" && q.rubric.trim()
-          ? q.rubric.trim()
-          : "Conceptual Understanding",
+      subject:
+        typeof q.subject === "string" && q.subject.trim()
+          ? q.subject.trim()
+          : (typeof q.rubric === "string" && q.rubric.trim() ? q.rubric.trim() : "General"),
       text:
         typeof q.text === "string" && q.text.trim()
           ? q.text.trim()
@@ -332,7 +345,7 @@ app.post("/generate-questions", async (req, res) => {
 // POST /questions
 app.post("/questions", async (req, res) => {
   try {
-    const { type, marks, difficulty, topic, rubric, text, options } = req.body || {};
+    const { type, marks, difficulty, topic, subject, text, options, correctIndex } = req.body || {};
     if (!type || !text) {
       return res.status(400).json({ error: "type and text are required" });
     }
@@ -341,20 +354,25 @@ app.post("/questions", async (req, res) => {
       Array.isArray(options) && options.length
         ? JSON.stringify(options)
         : null;
+    const correctIdx =
+      typeof correctIndex === "number" && Number.isInteger(correctIndex) && correctIndex >= 0
+        ? correctIndex
+        : null;
 
     const result = await runAsync(
       `
-      INSERT INTO questions (type, marks, difficulty, topic, rubric, text, options_json, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO questions (type, marks, difficulty, topic, subject, text, options_json, correct_index, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       [
         type,
         Number(marks) || 1,
         difficulty != null ? Number(difficulty) : null,
         topic || null,
-        rubric || null,
+        subject || null,
         text,
         optionsJson,
+        correctIdx,
         now,
         now,
       ],
@@ -362,7 +380,11 @@ app.post("/questions", async (req, res) => {
 
     const row = await getAsync(`SELECT * FROM questions WHERE id = ?`, [result.lastID]);
     if (row?.options_json) row.options = JSON.parse(row.options_json);
-    delete row.options_json;
+    if (row?.correct_index != null) row.correctIndex = row.correct_index;
+    if (row?.subject == null && row?.rubric != null) row.subject = row.rubric;
+    delete row?.options_json;
+    delete row?.correct_index;
+    delete row?.rubric;
     res.status(201).json(row);
   } catch (err) {
     console.error("Error creating question:", err);
@@ -376,7 +398,11 @@ app.get("/questions", async (_req, res) => {
     const rows = await allAsync(`SELECT * FROM questions ORDER BY id DESC`);
     const data = rows.map((r) => {
       if (r.options_json) r.options = JSON.parse(r.options_json);
+      if (r.correct_index != null) r.correctIndex = r.correct_index;
+      if (r.subject == null && r.rubric != null) r.subject = r.rubric;
       delete r.options_json;
+      delete r.correct_index;
+      delete r.rubric;
       return r;
     });
     res.json(data);
@@ -392,7 +418,11 @@ app.get("/questions/:id", async (req, res) => {
     const row = await getAsync(`SELECT * FROM questions WHERE id = ?`, [req.params.id]);
     if (!row) return res.status(404).json({ error: "Question not found" });
     if (row.options_json) row.options = JSON.parse(row.options_json);
+    if (row.correct_index != null) row.correctIndex = row.correct_index;
+    if (row.subject == null && row.rubric != null) row.subject = row.rubric;
     delete row.options_json;
+    delete row.correct_index;
+    delete row.rubric;
     res.json(row);
   } catch (err) {
     console.error("Error fetching question:", err);
@@ -406,7 +436,7 @@ app.put("/questions/:id", async (req, res) => {
     const existing = await getAsync(`SELECT * FROM questions WHERE id = ?`, [req.params.id]);
     if (!existing) return res.status(404).json({ error: "Question not found" });
 
-    const { type, marks, difficulty, topic, rubric, text, options } = req.body || {};
+    const { type, marks, difficulty, topic, subject, text, options, correctIndex } = req.body || {};
     const now = new Date().toISOString();
     const optionsJson =
       options === undefined
@@ -414,11 +444,18 @@ app.put("/questions/:id", async (req, res) => {
         : Array.isArray(options) && options.length
           ? JSON.stringify(options)
           : null;
+    const correctIdx =
+      correctIndex === undefined
+        ? (existing.correct_index != null ? existing.correct_index : null)
+        : typeof correctIndex === "number" && Number.isInteger(correctIndex) && correctIndex >= 0
+          ? correctIndex
+          : null;
+    const subjectVal = subject !== undefined ? subject : (existing.subject ?? existing.rubric ?? null);
 
     await runAsync(
       `
       UPDATE questions
-      SET type = ?, marks = ?, difficulty = ?, topic = ?, rubric = ?, text = ?, options_json = ?, updated_at = ?
+      SET type = ?, marks = ?, difficulty = ?, topic = ?, subject = ?, text = ?, options_json = ?, correct_index = ?, updated_at = ?
       WHERE id = ?
     `,
       [
@@ -426,9 +463,10 @@ app.put("/questions/:id", async (req, res) => {
         marks != null ? Number(marks) : existing.marks,
         difficulty != null ? Number(difficulty) : existing.difficulty,
         topic !== undefined ? topic : existing.topic,
-        rubric !== undefined ? rubric : existing.rubric,
+        subjectVal,
         text || existing.text,
         optionsJson,
+        correctIdx,
         now,
         req.params.id,
       ],
@@ -436,7 +474,11 @@ app.put("/questions/:id", async (req, res) => {
 
     const row = await getAsync(`SELECT * FROM questions WHERE id = ?`, [req.params.id]);
     if (row.options_json) row.options = JSON.parse(row.options_json);
+    if (row.correct_index != null) row.correctIndex = row.correct_index;
+    if (row.subject == null && row.rubric != null) row.subject = row.rubric;
     delete row.options_json;
+    delete row.correct_index;
+    delete row.rubric;
     res.json(row);
   } catch (err) {
     console.error("Error updating question:", err);
@@ -503,7 +545,11 @@ app.get("/assignments/:id", async (req, res) => {
     );
     const normalized = questions.map((r) => {
       if (r.options_json) r.options = JSON.parse(r.options_json);
+      if (r.correct_index != null) r.correctIndex = r.correct_index;
+      if (r.subject == null && r.rubric != null) r.subject = r.rubric;
       delete r.options_json;
+      delete r.correct_index;
+      delete r.rubric;
       return r;
     });
     res.json({ ...assignment, questions: normalized });
@@ -679,7 +725,11 @@ app.get("/papers/:id", async (req, res) => {
     );
     const normalized = questions.map((r) => {
       if (r.options_json) r.options = JSON.parse(r.options_json);
+      if (r.correct_index != null) r.correctIndex = r.correct_index;
+      if (r.subject == null && r.rubric != null) r.subject = r.rubric;
       delete r.options_json;
+      delete r.correct_index;
+      delete r.rubric;
       return r;
     });
     res.json({ ...paper, questions: normalized });

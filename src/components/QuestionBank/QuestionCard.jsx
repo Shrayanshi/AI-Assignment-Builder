@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { DiffBadge, TypeBadge } from "./Badges";
-import { chipStyle, actionBtnStyle, actionBtnStyleHover } from "./styles";
+import { chipStyle } from "./styles";
+import { Button } from "../ui/Button";
 
 const OPT_LABELS = ["A", "B", "C", "D"];
 
@@ -90,32 +91,26 @@ export function QuestionCard({
               onClick={(e) => e.stopPropagation()}
             >
               {onEdit && (
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
                   title="Edit question"
                   onClick={onEdit}
-                  style={{ ...actionBtnStyle, color: "#4b5563" }}
-                  onMouseEnter={(e) => Object.assign(e.currentTarget.style, actionBtnStyleHover)}
-                  onMouseLeave={(e) =>
-                    Object.assign(e.currentTarget.style, { background: "transparent" })
-                  }
+                  style={{ padding: "4px 8px", minHeight: "auto", fontSize: 12, color: "#4b5563" }}
                 >
                   ✎ Edit
-                </button>
+                </Button>
               )}
               {onDelete && (
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
                   title="Delete question"
                   onClick={onDelete}
-                  style={{ ...actionBtnStyle, color: "#b91c1c" }}
-                  onMouseEnter={(e) => Object.assign(e.currentTarget.style, actionBtnStyleHover)}
-                  onMouseLeave={(e) =>
-                    Object.assign(e.currentTarget.style, { background: "transparent" })
-                  }
+                  style={{ padding: "4px 8px", minHeight: "auto", fontSize: 12, color: "#b91c1c" }}
                 >
                   🗑 Delete
-                </button>
+                </Button>
               )}
             </div>
           )}
@@ -172,12 +167,12 @@ export function QuestionCard({
             {question.difficulty && <DiffBadge level={question.difficulty} />}
             {question.topic && <span style={chipStyle}>{question.topic}</span>}
           </div>
-          {question.rubric && (
+          {question.subject && (
             <span style={{
               fontSize: 10, color: "#94a3b8",
               whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 130,
             }}>
-              {question.rubric}
+              {question.subject}
             </span>
           )}
         </div>

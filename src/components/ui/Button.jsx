@@ -5,11 +5,13 @@ export function Button({
   variant = "primary",
   className = "",
   style,
+  disabled,
+  ...rest
 }) {
   const base = {
-    borderRadius: 999,
-    padding: "6px 14px",
-    fontSize: 13,
+    borderRadius: 10,
+    padding: "10px 20px",
+    fontSize: 14,
     fontWeight: 600,
     cursor: "pointer",
     border: "none",
@@ -17,8 +19,9 @@ export function Button({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: 8,
     transition: "background 0.15s ease, box-shadow 0.15s ease, transform 0.08s ease",
+    minHeight: 40,
   };
 
   const variants = {
@@ -45,11 +48,14 @@ export function Button({
       type={type}
       onClick={onClick}
       className={className}
+      disabled={disabled}
       style={{
         ...base,
         ...variantStyle,
+        ...(disabled && { opacity: 0.7, cursor: "not-allowed" }),
         ...style,
       }}
+      {...rest}
     >
       {children}
     </button>

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { inputStyle, primaryBtnStyle, secondaryBtnStyle } from "./styles";
+import { inputStyle } from "./styles";
+import { Button } from "../ui/Button";
 
 // ─── Rich Text Toolbar ────────────────────────────────────────────────────────
 
@@ -346,9 +347,9 @@ export function EditorModal({ mode, draft, onChangeDraft, onSave, onCancel }) {
             </label>
           ))}
           <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: "1/-1" }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: "#6b7280" }}>Rubric / Tag</span>
-            <input type="text" value={draft.rubric ?? ""} placeholder="e.g. Graphs – Rubric 1"
-              onChange={e => onChangeDraft("rubric", e.target.value)} style={inputStyle} />
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#6b7280" }}>Subject</span>
+            <input type="text" value={draft.subject ?? ""} placeholder="e.g. Mathematics, Science"
+              onChange={e => onChangeDraft("subject", e.target.value)} style={inputStyle} />
           </label>
         </div>
 
@@ -380,10 +381,10 @@ export function EditorModal({ mode, draft, onChangeDraft, onSave, onCancel }) {
 
         {/* Action buttons */}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
-          <button onClick={onCancel} style={secondaryBtnStyle}>Cancel</button>
-          <button onClick={onSave} style={primaryBtnStyle}>
+          <Button variant="secondary" onClick={onCancel}>Cancel</Button>
+          <Button onClick={onSave}>
             {isCreate ? "Create Question" : "Save Changes"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
