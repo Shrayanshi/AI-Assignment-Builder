@@ -15,8 +15,8 @@ async function updateAssignmentTotalMarks(assignmentId) {
   const result = await getAsync(
     `SELECT COALESCE(SUM(q.marks), 0) as total
      FROM assignment_questions aq
-     JOIN questions q ON q.id = aq.question_id
-     WHERE aq.assignment_id = $1`,
+     JOIN questions q ON q.id::text = aq.question_id::text
+     WHERE aq.assignment_id::text = $1::text`,
     [assignmentId]
   );
   await runAsync(
@@ -30,8 +30,8 @@ async function updatePaperTotalMarks(paperId) {
   const result = await getAsync(
     `SELECT COALESCE(SUM(q.marks), 0) as total
      FROM question_paper_questions pq
-     JOIN questions q ON q.id = pq.question_id
-     WHERE pq.paper_id = $1`,
+     JOIN questions q ON q.id::text = pq.question_id::text
+     WHERE pq.paper_id::text = $1::text`,
     [paperId]
   );
   await runAsync(
@@ -72,8 +72,8 @@ export default async function handler(req, res) {
         const rows = await allAsync(
           `SELECT q.*, aq.position
            FROM assignment_questions aq
-           JOIN questions q ON q.id = aq.question_id
-           WHERE aq.assignment_id = $1
+           JOIN questions q ON q.id::text = aq.question_id::text
+           WHERE aq.assignment_id::text = $1::text
            ORDER BY aq.position ASC`,
           [assignmentId],
         );
@@ -92,8 +92,8 @@ export default async function handler(req, res) {
         const rows = await allAsync(
           `SELECT q.*, pq.position
            FROM question_paper_questions pq
-           JOIN questions q ON q.id = pq.question_id
-           WHERE pq.paper_id = $1
+           JOIN questions q ON q.id::text = pq.question_id::text
+           WHERE pq.paper_id::text = $1::text
            ORDER BY pq.position ASC`,
           [paperId],
         );
@@ -128,9 +128,18 @@ export default async function handler(req, res) {
           return res.status(400).json({ error: "questionId is required" });
         }
 
+        // Prevent orphaned links: only allow attaching existing questions
+        const exists = await getAsync(
+          `SELECT id FROM questions WHERE id::text = $1::text`,
+          [qid]
+        );
+        if (!exists) {
+          return res.status(400).json({ error: "Question does not exist in DB. Please create/save it first." });
+        }
+
         if (assignmentId) {
           const existing = await allAsync(
-            `SELECT position FROM assignment_questions WHERE assignment_id = $1 ORDER BY position DESC LIMIT 1`,
+            `SELECT position FROM assignment_questions WHERE assignment_id::text = $1::text ORDER BY position DESC LIMIT 1`,
             [assignmentId],
           );
           const nextPos = existing[0] ? existing[0].position + 1 : 0;
@@ -144,7 +153,7 @@ export default async function handler(req, res) {
           await updateAssignmentTotalMarks(assignmentId);
         } else if (paperId) {
           const existing = await allAsync(
-            `SELECT position FROM question_paper_questions WHERE paper_id = $1 ORDER BY position DESC LIMIT 1`,
+            `SELECT position FROM question_paper_questions WHERE paper_id::text = $1::text ORDER BY position DESC LIMIT 1`,
             [paperId],
           );
           const nextPos = existing[0] ? existing[0].position + 1 : 0;

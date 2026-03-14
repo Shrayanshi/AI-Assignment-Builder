@@ -26,8 +26,8 @@ export default async function handler(req, res) {
         const questions = await allAsync(
           `SELECT q.*, pq.position
            FROM question_paper_questions pq
-           JOIN questions q ON q.id = pq.question_id
-           WHERE pq.paper_id = $1
+           JOIN questions q ON q.id::text = pq.question_id::text
+           WHERE pq.paper_id::text = $1::text
            ORDER BY pq.position ASC`,
           [id],
         );
@@ -41,10 +41,24 @@ export default async function handler(req, res) {
 
     try {
       const rows = await allAsync(
-        `SELECT qp.*, 
-                COUNT(DISTINCT pq.question_id) as question_count
+        `SELECT
+            qp.id,
+            qp.title,
+            qp.school_name,
+            qp.school_address,
+            qp.grade,
+            qp.subject,
+            qp.exam_type,
+            qp.duration,
+            qp.academic_year,
+            qp.exam_date,
+            qp.created_at,
+            qp.updated_at,
+            COUNT(DISTINCT q.id) as question_count,
+            COALESCE(SUM(q.marks), 0) as total_marks
          FROM question_papers qp
-         LEFT JOIN question_paper_questions pq ON pq.paper_id = qp.id
+         LEFT JOIN question_paper_questions pq ON pq.paper_id::text = qp.id::text
+         LEFT JOIN questions q ON q.id::text = pq.question_id::text
          GROUP BY qp.id
          ORDER BY qp.id DESC`,
       );

@@ -29,8 +29,8 @@ export default async function handler(req, res) {
         const questions = await allAsync(
           `SELECT q.*, aq.position
            FROM assignment_questions aq
-           JOIN questions q ON q.id = aq.question_id
-           WHERE aq.assignment_id = $1
+           JOIN questions q ON q.id::text = aq.question_id::text
+           WHERE aq.assignment_id::text = $1::text
            ORDER BY aq.position ASC`,
           [id],
         );
@@ -45,10 +45,17 @@ export default async function handler(req, res) {
     // List assignments with question count
     try {
       const rows = await allAsync(
-        `SELECT a.*, 
-                COUNT(DISTINCT aq.question_id) as question_count
+        `SELECT
+            a.id,
+            a.name,
+            a.subject,
+            a.created_at,
+            a.updated_at,
+            COUNT(DISTINCT q.id) as question_count,
+            COALESCE(SUM(q.marks), 0) as total_marks
          FROM assignments a
-         LEFT JOIN assignment_questions aq ON aq.assignment_id = a.id
+         LEFT JOIN assignment_questions aq ON aq.assignment_id::text = a.id::text
+         LEFT JOIN questions q ON q.id::text = aq.question_id::text
          GROUP BY a.id
          ORDER BY a.id DESC`,
       );

@@ -435,24 +435,28 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
 
   // ── AI Suggest ────────────────────────────────────────────────────────────
   function handleAiQuestionsGenerated(newQuestions) {
-    setQuestions(prev => {
-      const existingIds = new Set(prev.map(q => q.id));
-      const now = Date.now().toString(36);
-      const safeNew = newQuestions.map((q, idx) => {
-        const baseId = typeof q.id === "string" && q.id.trim() ? q.id.trim() : `ai-${now}-${idx.toString(36)}`;
-        const finalId = existingIds.has(baseId) ? `ai-${now}-${Math.random().toString(36).slice(2, 6)}` : baseId;
-        const isMCQ = q.type === "MCQ";
-        let options = [];
-        let correctIndex = null;
-        if (isMCQ && Array.isArray(q.options)) {
-          options = q.options.map(o => (typeof o === "string" ? o.trim() : "")).filter(Boolean);
-          const idxNum = typeof q.correctIndex === "number" ? q.correctIndex : Number(q.correctIndex);
-          if (options.length && Number.isInteger(idxNum) && idxNum >= 0 && idxNum < options.length) correctIndex = idxNum;
-        }
-        return { id: finalId, type: isMCQ ? "MCQ" : "FRQ", marks: Number(q.marks) || 4, difficulty: q.difficulty != null ? Number(q.difficulty) || 3 : 3, topic: q.topic || "", subject: q.subject || "", text: q.text || "", richText: q.text || "", options: isMCQ ? options : undefined, correctIndex: isMCQ ? correctIndex : undefined };
-      });
-      return [...prev, ...safeNew];
+    const incoming = Array.isArray(newQuestions) ? newQuestions : [];
+    const normalized = incoming.map((q) => ({
+      ...q,
+      id: String(q.id),
+      richText: q.richText ?? q.text ?? "",
+    }));
+
+    setQuestions((prev) => {
+      const existing = new Set(prev.map((q) => q.id));
+      const next = [...prev];
+      for (const q of normalized) {
+        if (!existing.has(q.id)) next.push(q);
+      }
+      return next;
     });
+
+    // Ensure other screens reload fresh counts/questions when navigating
+    invalidateCache("/api/questions");
+    invalidateCache("/api/assignments");
+    invalidateCache("/api/papers");
+
+    if (normalized.length) pushToast(`Saved ${normalized.length} AI question(s) to the bank`, "success");
   }
 
   // ── Delete ────────────────────────────────────────────────────────────────
