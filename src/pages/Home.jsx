@@ -112,6 +112,7 @@ export function HomePage({
     <div style={{ minHeight: "100vh", background: "#f9fafb" }}>
       <div style={{ background: "#ffffff", borderBottom: "1px solid #e5e7eb" }}>
         <div
+          className="home-header"
           style={{
             maxWidth: 1120,
             margin: "0 auto",
@@ -138,7 +139,7 @@ export function HomePage({
         </div>
       </div>
 
-      <div style={{ maxWidth: 1120, margin: "0 auto", padding: "20px 24px 32px" }}>
+      <div className="home-content" style={{ maxWidth: 1120, margin: "0 auto", padding: "20px 24px 32px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
           <div
             style={{
@@ -327,7 +328,7 @@ export function HomePage({
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {filteredPapers.map((paper) => (
-                  <Card key={paper.id} style={{ padding: 16, display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <Card key={paper.id} style={{ padding: 16, display: "flex", justifyContent: "space-between", gap: 12 }} className="home-card">
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ marginBottom: 6 }}>
                         <div style={{ fontSize: 15, fontWeight: 600, color: "#111827" }}>
@@ -350,7 +351,7 @@ export function HomePage({
                         Created: {new Date(paper.createdAt).toLocaleDateString()} · Last modified: {new Date(paper.lastModified).toLocaleDateString()}
                       </div>
                     </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+                    <div className="home-card-actions" style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
                       {onEditDocument && (
                         <Button variant="secondary" onClick={() => onEditDocument(paper.id)} style={{ padding: "8px 14px" }}>
                           Edit
@@ -388,7 +389,7 @@ export function HomePage({
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {filteredAssignments.map((assignment) => (
-                  <Card key={assignment.id} style={{ padding: 16, display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <Card key={assignment.id} style={{ padding: 16, display: "flex", justifyContent: "space-between", gap: 12 }} className="home-card">
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ marginBottom: 6 }}>
                         <div style={{ fontSize: 15, fontWeight: 600, color: "#111827" }}>{assignment.title}</div>
@@ -406,7 +407,7 @@ export function HomePage({
                         Created: {new Date(assignment.createdAt).toLocaleDateString()} · Last modified: {new Date(assignment.lastModified).toLocaleDateString()}
                       </div>
                     </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+                    <div className="home-card-actions" style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
                       {onEditDocument && (
                         <Button variant="secondary" onClick={() => onEditDocument(assignment.id)} style={{ padding: "8px 14px" }}>
                           Edit

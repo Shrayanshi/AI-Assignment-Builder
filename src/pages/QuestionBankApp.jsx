@@ -650,6 +650,9 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
         * { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
         select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236b7280'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; padding-right: 24px !important; }
         @keyframes spin { to { transform: rotate(360deg); } }
+        @media (max-width: 768px) {
+          body { height: auto !important; overflow: auto !important; }
+        }
       `}</style>
 
       <ToastStack toasts={toasts} />
@@ -664,11 +667,11 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
         />
       )}
 
-      <div style={{ height: "100vh", display: "flex", alignItems: "stretch", justifyContent: "center", padding: "24px 16px", overflow: "hidden" }}>
-        <div style={{ width: "100%", maxWidth: 1160, background: "#ffffff", borderRadius: 28, boxShadow: "0 24px 60px rgba(15,23,42,0.12), 0 2px 6px rgba(15,23,42,0.04)", padding: "24px 28px 20px", display: "flex", flexDirection: "column", gap: 16, overflow: "hidden" }}>
+      <div className="qb-outer" style={{ height: "100vh", display: "flex", alignItems: "stretch", justifyContent: "center", padding: "24px 16px", overflow: "hidden" }}>
+        <div className="qb-card" style={{ width: "100%", maxWidth: 1160, background: "#ffffff", borderRadius: 28, boxShadow: "0 24px 60px rgba(15,23,42,0.12), 0 2px 6px rgba(15,23,42,0.04)", padding: "24px 28px 20px", display: "flex", flexDirection: "column", gap: 16, overflow: "hidden" }}>
 
           {/* Header */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexShrink: 0 }}>
+          <div className="qb-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexShrink: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               {onBack && <Button variant="secondary" onClick={onBack} style={{ padding: "8px 14px", minHeight: "auto" }}>← Back</Button>}
               <div>
@@ -680,7 +683,7 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
                 </p>
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 14px", borderRadius: 999, background: "linear-gradient(135deg, #eef2ff, #f5f3ff)", border: "1px solid #c7d2fe", flexShrink: 0 }}>
+            <div className="qb-header-badge" style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 14px", borderRadius: 999, background: "linear-gradient(135deg, #eef2ff, #f5f3ff)", border: "1px solid #c7d2fe", flexShrink: 0 }}>
               <span style={{ fontSize: 14 }}>✦</span>
               <span style={{ fontSize: 11, fontWeight: 600, color: "#4f46e5" }}>By Shrayanshi</span>
             </div>
@@ -823,10 +826,10 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
           )}
 
           {/* Two-column layout */}
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 1.1fr) minmax(380px, 2fr)", gap: 18, flex: 1, minHeight: 0, overflow: "hidden" }}>
+          <div className="qb-cols" style={{ display: "grid", gridTemplateColumns: "minmax(260px, 1.1fr) minmax(380px, 2fr)", gap: 18, flex: 1, minHeight: 0, overflow: "hidden" }}>
 
             {/* LEFT – Assignment Panel */}
-            <section style={{ ...panelStyle, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+            <section className="qb-panel" style={{ ...panelStyle, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 12, flexShrink: 0 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {editingTitle ? (
@@ -892,7 +895,7 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
             </section>
 
             {/* RIGHT – Question Bank Panel */}
-            <section style={{ ...panelStyle, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+            <section className="qb-panel" style={{ ...panelStyle, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
               <AiQuestionGenerator onQuestionsGenerated={handleAiQuestionsGenerated} />
 
               <div style={{ flexShrink: 0, marginBottom: 8 }}>
@@ -955,12 +958,12 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
           </div>
 
           {/* Footer */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 12, borderTop: "1.5px dashed #e2e8f0", flexShrink: 0 }}>
+          <div className="qb-footer" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 12, borderTop: "1.5px dashed #e2e8f0", flexShrink: 0 }}>
             <div style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}>
               <span style={{ color: "#6366f1", fontWeight: 700 }}>{assignmentQuestions.length}</span> question{assignmentQuestions.length !== 1 ? "s" : ""}&nbsp;·&nbsp;
               <span style={{ color: "#6366f1", fontWeight: 700 }}>{totalMarks}</span> total marks
             </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div className="qb-footer-buttons" style={{ display: "flex", gap: 8, alignItems: "center" }}>
               {onGoHome && <Button variant="secondary" onClick={onGoHome} style={{ padding: "8px 14px", minHeight: "auto" }}>Go to Home</Button>}
               <Button onClick={exportPdf} style={{ padding: "8px 14px", minHeight: "auto" }}>⬇ Download PDF</Button>
               <Button variant="secondary" onClick={exportDoc} style={{ padding: "8px 14px", minHeight: "auto" }}>⬇ Download .doc</Button>

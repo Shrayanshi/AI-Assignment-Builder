@@ -82,6 +82,7 @@ export function QuestionPaperSetup({ onBack, onContinue, initialTemplate }) {
           gridTemplateColumns: "minmax(0, 2.2fr) minmax(0, 1.2fr)",
           gap: 16,
         }}
+        className="qp-setup-grid"
       >
         <div>
           <Card>
@@ -120,7 +121,7 @@ export function QuestionPaperSetup({ onBack, onContinue, initialTemplate }) {
 
               <div>
                 <h3 style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 8 }}>Exam Information</h3>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                <div className="qp-exam-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
                   <div>
                     <label htmlFor="grade" style={{ fontSize: 12, fontWeight: 500, color: "#374151" }}>Grade/Class *</label>
                     <select
@@ -226,7 +227,7 @@ export function QuestionPaperSetup({ onBack, onContinue, initialTemplate }) {
           </div>
         </div>
 
-        <div>
+        <div className="qp-setup-preview">
           <Card style={{ position: "sticky", top: 24 }}>
             <CardHeader>
               <CardTitle style={{ fontSize: 13 }}>Preview</CardTitle>

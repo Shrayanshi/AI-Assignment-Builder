@@ -325,6 +325,7 @@ export function EditorModal({ mode, draft, onChangeDraft, onSave, onCancel }) {
     >
       <div
         onClick={e => e.stopPropagation()}
+        className="editor-modal-inner"
         style={{
           background: "#ffffff", borderRadius: 20, padding: "28px 28px 24px",
           width: "100%", maxWidth: 600,
@@ -339,7 +340,7 @@ export function EditorModal({ mode, draft, onChangeDraft, onSave, onCancel }) {
         </div>
 
         {/* Metadata grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 12px" }}>
+        <div className="editor-modal-meta-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 12px" }}>
           {fields.map(({ label, field, el }) => (
             <label key={field} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: "#6b7280" }}>{label}</span>

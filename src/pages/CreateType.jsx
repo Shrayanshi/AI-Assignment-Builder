@@ -79,7 +79,7 @@ export function CreateTypePage({ onBack, onCreateQuestionPaper, onCreateAssignme
       </div>
 
       <div style={{ maxWidth: 800, margin: "0 auto", padding: "32px 24px 40px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 }}>
+        <div className="create-type-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 }}>
           {CARDS.map((card) => {
             const isHovered = hoverCard === card.key;
             return (
