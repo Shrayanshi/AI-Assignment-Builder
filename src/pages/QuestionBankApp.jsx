@@ -391,7 +391,17 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
       correctIndex: cleanedCorrectIndex,
     };
 
-    const payload = { type: finalDraft.type, marks: finalDraft.marks, difficulty: finalDraft.difficulty, topic: finalDraft.topic, subject: finalDraft.subject, text: finalDraft.text, options: finalDraft.options, correctIndex: finalDraft.correctIndex };
+    // Persist the rich HTML in `text` so formatting from RichToolbar is saved.
+    const payload = {
+      type: finalDraft.type,
+      marks: finalDraft.marks,
+      difficulty: finalDraft.difficulty,
+      topic: finalDraft.topic,
+      subject: finalDraft.subject,
+      text: finalDraft.richText || finalDraft.text,
+      options: finalDraft.options,
+      correctIndex: finalDraft.correctIndex,
+    };
 
     try {
       if (editorMode === "create" || !editorDraft.id) {
