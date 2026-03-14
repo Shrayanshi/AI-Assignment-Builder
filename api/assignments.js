@@ -1,4 +1,4 @@
-import { allAsync, runAsync, getAsync } from "../backend/server.js";
+import { allAsync, runAsync, getAsync } from "../lib/db.js";
 
 function normalizeQuestion(r) {
   if (r.options_json) r.options = JSON.parse(r.options_json);
@@ -21,7 +21,7 @@ export default async function handler(req, res) {
     if (id) {
       try {
         const assignment = await getAsync(
-          `SELECT * FROM assignments WHERE id = ?`,
+          `SELECT * FROM assignments WHERE id = $1`,
           [id],
         );
         if (!assignment)
@@ -30,7 +30,7 @@ export default async function handler(req, res) {
           `SELECT q.*, aq.position
            FROM assignment_questions aq
            JOIN questions q ON q.id = aq.question_id
-           WHERE aq.assignment_id = ?
+           WHERE aq.assignment_id = $1
            ORDER BY aq.position ASC`,
           [id],
         );
@@ -67,15 +67,18 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "name is required" });
       }
       const now = new Date().toISOString();
-      const result = await runAsync(
-        `INSERT INTO assignments (name, subject, created_at, updated_at) VALUES (?, ?, ?, ?)`,
-        [name, subject || null, now, now],
-      );
-      const row = await getAsync(
-        `SELECT * FROM assignments WHERE id = ?`,
-        [result.lastID],
-      );
-      return res.status(201).json(row);
+      const insertSql = `
+        INSERT INTO assignments (name, subject, created_at, updated_at)
+        VALUES ($1, $2, $3, $4)
+        RETURNING *
+      `;
+      const { rows } = await runAsync(insertSql, [
+        name,
+        subject || null,
+        now,
+        now,
+      ]);
+      return res.status(201).json(rows[0]);
     } catch (err) {
       console.error("Error creating assignment:", err);
       return res.status(500).json({ error: "Failed to create assignment" });
@@ -86,22 +89,26 @@ export default async function handler(req, res) {
   if (req.method === "PUT" && id) {
     try {
       const existing = await getAsync(
-        `SELECT * FROM assignments WHERE id = ?`,
+        `SELECT * FROM assignments WHERE id = $1`,
         [id],
       );
       if (!existing)
         return res.status(404).json({ error: "Assignment not found" });
       const { name, subject } = req.body || {};
       const now = new Date().toISOString();
-      await runAsync(
-        `UPDATE assignments SET name = ?, subject = ?, updated_at = ? WHERE id = ?`,
-        [name || existing.name, subject || existing.subject, now, id],
-      );
-      const updated = await getAsync(
-        `SELECT * FROM assignments WHERE id = ?`,
-        [id],
-      );
-      return res.status(200).json(updated);
+      const updateSql = `
+        UPDATE assignments
+        SET name = $1, subject = $2, updated_at = $3
+        WHERE id = $4
+        RETURNING *
+      `;
+      const { rows } = await runAsync(updateSql, [
+        name || existing.name,
+        subject || existing.subject,
+        now,
+        id,
+      ]);
+      return res.status(200).json(rows[0]);
     } catch (err) {
       console.error("Error updating assignment:", err);
       return res.status(500).json({ error: "Failed to update assignment" });
@@ -111,7 +118,7 @@ export default async function handler(req, res) {
   // DELETE /api/assignments?id=123
   if (req.method === "DELETE" && id) {
     try {
-      await runAsync(`DELETE FROM assignments WHERE id = ?`, [id]);
+      await runAsync(`DELETE FROM assignments WHERE id = $1`, [id]);
       return res.status(200).json({ ok: true });
     } catch (err) {
       console.error("Error deleting assignment:", err);

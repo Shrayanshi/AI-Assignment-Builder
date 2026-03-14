@@ -157,88 +157,70 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
   }
 
   // ── Load from backend once on mount ──────────────────────────────────────
+  // questionIds = undefined  → not fetched yet
+  // questionIds = []         → fetched, no questions
+  // questionIds = [...]      → fetched, has questions
   useEffect(() => {
     async function loadFromBackend() {
-      console.log("[loadFromBackend] Starting with:", { openPaperId, openAssignmentId });
       try {
-        const qs = await fetchJson("/api/questions", { cache: false });
-        const normalizedQs = qs.map(q => ({ ...q, id: String(q.id), richText: q.text }));
-        setQuestions(normalizedQs);
-
+        // Always fetch all questions in parallel with assignments/paper
         if (openPaperId) {
-          console.log("[loadFromBackend] Fetching paper:", openPaperId);
-          const paper = await fetchJson(`/api/papers?id=${openPaperId}`);
+          const [qs, paper] = await Promise.all([
+            fetchJson("/api/questions", { cache: false }),
+            fetchJson(`/api/papers?id=${openPaperId}`, { cache: false }),
+          ]);
+          const normalizedQs = qs.map(q => ({ ...q, id: String(q.id), richText: q.text }));
+          setQuestions(normalizedQs);
           const qIds = (paper.questions || []).map(q => String(q.id));
           setAssignments([{ id: String(paper.id), name: paper.title || "Question Paper", questionIds: qIds }]);
           setActiveAssignmentId(String(paper.id));
-          setActiveQuestionId(qIds[0] ?? normalizedQs[0]?.id ?? null);
-          console.log("[loadFromBackend] Paper loaded, set activeAssignmentId:", String(paper.id));
           return;
         }
 
-        // If we have openAssignmentId, fetch just that assignment with questions
-        if (openAssignmentId) {
-          console.log("[loadFromBackend] Fetching assignment:", openAssignmentId);
-          try {
-            const [allAssignments, activeAssignmentFull] = await Promise.all([
-              fetchJson("/api/assignments", { cache: false }),
-              fetchJson(`/api/assignments?id=${openAssignmentId}`, { cache: false }),
-            ]);
+        if (openAssignmentId && !justCreatedRef.current) {
+          // Fetch questions + assignment list + active assignment detail in parallel
+          const [qs, allAssignments, activeDetail] = await Promise.all([
+            fetchJson("/api/questions", { cache: false }),
+            fetchJson("/api/assignments", { cache: false }),
+            fetchJson(`/api/assignments?id=${openAssignmentId}`, { cache: false }),
+          ]);
+          const normalizedQs = qs.map(q => ({ ...q, id: String(q.id), richText: q.text }));
+          setQuestions(normalizedQs);
 
-            console.log("[loadFromBackend] Fetched assignment details:", activeAssignmentFull);
-
-            // Build enriched list: full data for active, basic data for others
-            const enriched = allAssignments.map(a => {
-              if (String(a.id) === String(openAssignmentId)) {
-                const qIds = (activeAssignmentFull.questions || []).map(q => String(q.id));
-                return { id: String(a.id), name: a.name, questionIds: qIds };
-              }
-              return { id: String(a.id), name: a.name, questionIds: [] };
-            });
-
-            // CRITICAL FIX: If the active assignment isn't in the list yet (race condition),
-            // add it explicitly. This happens when creating a new assignment.
-            const hasActiveAssignment = enriched.some(a => String(a.id) === String(openAssignmentId));
-            if (!hasActiveAssignment && activeAssignmentFull) {
-              const qIds = (activeAssignmentFull.questions || []).map(q => String(q.id));
-              enriched.unshift({
-                id: String(activeAssignmentFull.id),
-                name: activeAssignmentFull.name || "Untitled Assignment",
-                questionIds: qIds
-              });
-              console.log("[loadFromBackend] Active assignment not in list, added it:", activeAssignmentFull);
-            }
-
-            console.log("[loadFromBackend] Setting assignments:", enriched);
-            setAssignments(enriched);
-            setActiveAssignmentId(String(openAssignmentId));
-            const qIds = (activeAssignmentFull.questions || []).map(q => String(q.id));
-            setActiveQuestionId(qIds[0] ?? normalizedQs[0]?.id ?? null);
-            console.log("[loadFromBackend] Assignment loaded, set activeAssignmentId:", String(openAssignmentId));
-          } catch (err) {
-            console.error("Failed to load assignment", err);
+          // Build the list, populating questionIds for the active assignment right away
+          const activeQIds = (activeDetail.questions || []).map(q => String(q.id));
+          const enriched = allAssignments.map(a =>
+            String(a.id) === String(openAssignmentId)
+              ? { id: String(a.id), name: a.name, questionIds: activeQIds }
+              : { id: String(a.id), name: a.name, questionIds: undefined }
+          );
+          // Race condition guard: add it explicitly if not in list yet
+          if (!enriched.some(a => a.id === String(openAssignmentId))) {
+            enriched.unshift({ id: String(activeDetail.id), name: activeDetail.name, questionIds: activeQIds });
           }
+          setAssignments(enriched);
+          setActiveAssignmentId(String(openAssignmentId));
           return;
         }
 
-        // No openAssignmentId: load all assignments without questions
-        console.log("[loadFromBackend] Loading all assignments (no specific ID)");
-        const as = await fetchJson("/api/assignments");
+        // No specific assignment/paper: load list + questions
+        const [qs, as] = await Promise.all([
+          fetchJson("/api/questions", { cache: false }),
+          fetchJson("/api/assignments", { cache: false }),
+        ]);
+        const normalizedQs = qs.map(q => ({ ...q, id: String(q.id), richText: q.text }));
+        setQuestions(normalizedQs);
+
         const basicAssignments = as.map(a => ({
           id: String(a.id),
           name: a.name,
-          questionIds: []
+          questionIds: undefined, // will be loaded lazily when activated
         }));
-
         setAssignments(basicAssignments);
 
-        // Only update activeAssignmentId from backend if we didn't just create one locally
         if (!justCreatedRef.current) {
-          const first = basicAssignments[0];
-          const nextId = first?.id || initial.activeAssignmentId;
+          const nextId = basicAssignments[0]?.id || initial.activeAssignmentId;
           setActiveAssignmentId(nextId);
-          setActiveQuestionId(normalizedQs[0]?.id ?? null);
-          console.log("[loadFromBackend] Set first assignment as active:", nextId);
         }
       } catch (err) {
         console.error("Failed to load from backend", err);
@@ -248,46 +230,23 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openPaperId, openAssignmentId]);
 
-  // ── Sync activeAssignmentId when props change (but not after local creation) ──
-  useEffect(() => {
-    if (justCreatedRef.current) return;
-    if (openPaperId) setActiveAssignmentId(openPaperId);
-    else if (openAssignmentId) setActiveAssignmentId(openAssignmentId);
-  }, [openPaperId, openAssignmentId]);
-
-  // ── Load questions for active assignment if not already loaded ────────────────
+  // ── Lazy-load questions when switching to an assignment that hasn't been loaded ──
   useEffect(() => {
     if (!activeAssignmentId || isPaperMode) return;
-
     const assignment = assignments.find(a => a.id === activeAssignmentId);
-    if (!assignment) return;
+    // Only fetch if questionIds is undefined (sentinel = "not loaded yet")
+    if (!assignment || assignment.questionIds !== undefined) return;
 
-    // Only fetch if questionIds is an empty array (not loaded yet)
-    // Skip if it's undefined (new assignment) or has items (already loaded)
-    const needsLoad = Array.isArray(assignment.questionIds) && assignment.questionIds.length === 0;
-
-    if (needsLoad) {
-      console.log("[loadAssignmentQuestions] Loading questions for assignment:", activeAssignmentId);
-
-      fetchJson(`/api/assignments?id=${activeAssignmentId}`, { cache: false })
-        .then(data => {
-          const qIds = (data.questions || []).map(q => String(q.id));
-          console.log("[loadAssignmentQuestions] Loaded question IDs:", qIds);
-
-          // Update just this assignment's questionIds
-          setAssignments(prev => prev.map(a =>
-            a.id === activeAssignmentId
-              ? { ...a, questionIds: qIds }
-              : a
-          ));
-        })
-        .catch(err => {
-          console.error("[loadAssignmentQuestions] Failed to load:", err);
-        });
-    }
-    // Only re-run when activeAssignmentId changes, not when assignments change
+    fetchJson(`/api/assignments?id=${activeAssignmentId}`, { cache: false })
+      .then(data => {
+        const qIds = (data.questions || []).map(q => String(q.id));
+        setAssignments(prev => prev.map(a =>
+          a.id === activeAssignmentId ? { ...a, questionIds: qIds } : a
+        ));
+      })
+      .catch(err => console.error("[lazyLoadQuestions] Failed:", err));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAssignmentId, isPaperMode]);
+  }, [activeAssignmentId, assignments, isPaperMode]);
 
   // ── Persist to localStorage ───────────────────────────────────────────────
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { allAsync, runAsync, getAsync } from "../backend/server.js";
+import { allAsync, runAsync, getAsync } from "../lib/db.js";
 
 function normalizeQuestion(r) {
   if (r.options_json) r.options = JSON.parse(r.options_json);
@@ -19,7 +19,7 @@ export default async function handler(req, res) {
     if (id) {
       try {
         const paper = await getAsync(
-          `SELECT * FROM question_papers WHERE id = ?`,
+          `SELECT * FROM question_papers WHERE id = $1`,
           [id],
         );
         if (!paper) return res.status(404).json({ error: "Paper not found" });
@@ -27,7 +27,7 @@ export default async function handler(req, res) {
           `SELECT q.*, pq.position
            FROM question_paper_questions pq
            JOIN questions q ON q.id = pq.question_id
-           WHERE pq.paper_id = ?
+           WHERE pq.paper_id = $1
            ORDER BY pq.position ASC`,
           [id],
         );
@@ -74,30 +74,28 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "title is required" });
       }
       const now = new Date().toISOString();
-      const result = await runAsync(
-        `INSERT INTO question_papers
-         (title, school_name, school_address, grade, subject, exam_type, duration, total_marks, academic_year, exam_date, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          title,
-          schoolName || null,
-          schoolAddress || null,
-          grade || null,
-          subject || null,
-          examType || null,
-          duration || null,
-          totalMarks != null ? Number(totalMarks) : null,
-          academicYear || null,
-          examDate || null,
-          now,
-          now,
-        ],
-      );
-      const row = await getAsync(
-        `SELECT * FROM question_papers WHERE id = ?`,
-        [result.lastID],
-      );
-      return res.status(201).json(row);
+      const insertSql = `
+        INSERT INTO question_papers
+          (title, school_name, school_address, grade, subject, exam_type, duration, total_marks, academic_year, exam_date, created_at, updated_at)
+        VALUES
+          ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        RETURNING *
+      `;
+      const { rows } = await runAsync(insertSql, [
+        title,
+        schoolName || null,
+        schoolAddress || null,
+        grade || null,
+        subject || null,
+        examType || null,
+        duration || null,
+        totalMarks != null ? Number(totalMarks) : null,
+        academicYear || null,
+        examDate || null,
+        now,
+        now,
+      ]);
+      return res.status(201).json(rows[0]);
     } catch (err) {
       console.error("Error creating paper:", err);
       return res.status(500).json({ error: "Failed to create paper" });
@@ -108,7 +106,7 @@ export default async function handler(req, res) {
   if (req.method === "PUT" && id) {
     try {
       const existing = await getAsync(
-        `SELECT * FROM question_papers WHERE id = ?`,
+        `SELECT * FROM question_papers WHERE id = $1`,
         [id],
       );
       if (!existing)
@@ -127,31 +125,37 @@ export default async function handler(req, res) {
         examDate,
       } = req.body || {};
       const now = new Date().toISOString();
-      await runAsync(
-        `UPDATE question_papers
-         SET title = ?, school_name = ?, school_address = ?, grade = ?, subject = ?, exam_type = ?,
-             duration = ?, total_marks = ?, academic_year = ?, exam_date = ?, updated_at = ?
-         WHERE id = ?`,
-        [
-          title || existing.title,
-          schoolName ?? existing.school_name,
-          schoolAddress ?? existing.school_address,
-          grade ?? existing.grade,
-          subject ?? existing.subject,
-          examType ?? existing.exam_type,
-          duration ?? existing.duration,
-          totalMarks != null ? Number(totalMarks) : existing.total_marks,
-          academicYear ?? existing.academic_year,
-          examDate ?? existing.exam_date,
-          now,
-          id,
-        ],
-      );
-      const updated = await getAsync(
-        `SELECT * FROM question_papers WHERE id = ?`,
-        [id],
-      );
-      return res.status(200).json(updated);
+      const updateSql = `
+        UPDATE question_papers
+        SET title = $1,
+            school_name = $2,
+            school_address = $3,
+            grade = $4,
+            subject = $5,
+            exam_type = $6,
+            duration = $7,
+            total_marks = $8,
+            academic_year = $9,
+            exam_date = $10,
+            updated_at = $11
+        WHERE id = $12
+        RETURNING *
+      `;
+      const { rows } = await runAsync(updateSql, [
+        title || existing.title,
+        schoolName ?? existing.school_name,
+        schoolAddress ?? existing.school_address,
+        grade ?? existing.grade,
+        subject ?? existing.subject,
+        examType ?? existing.exam_type,
+        duration ?? existing.duration,
+        totalMarks != null ? Number(totalMarks) : existing.total_marks,
+        academicYear ?? existing.academic_year,
+        examDate ?? existing.exam_date,
+        now,
+        id,
+      ]);
+      return res.status(200).json(rows[0]);
     } catch (err) {
       console.error("Error updating paper:", err);
       return res.status(500).json({ error: "Failed to update paper" });
@@ -161,7 +165,7 @@ export default async function handler(req, res) {
   // DELETE /api/papers?id=123
   if (req.method === "DELETE" && id) {
     try {
-      await runAsync(`DELETE FROM question_papers WHERE id = ?`, [id]);
+      await runAsync(`DELETE FROM question_papers WHERE id = $1`, [id]);
       return res.status(200).json({ ok: true });
     } catch (err) {
       console.error("Error deleting paper:", err);

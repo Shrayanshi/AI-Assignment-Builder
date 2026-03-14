@@ -1,4 +1,4 @@
-import { allAsync, runAsync, getAsync } from "../backend/server.js";
+import { allAsync, runAsync, getAsync } from "../lib/db.js";
 
 function normalizeRow(row) {
   if (row?.options_json) row.options = JSON.parse(row.options_json);
@@ -16,11 +16,11 @@ async function updateAssignmentTotalMarks(assignmentId) {
     `SELECT COALESCE(SUM(q.marks), 0) as total
      FROM assignment_questions aq
      JOIN questions q ON q.id = aq.question_id
-     WHERE aq.assignment_id = ?`,
+     WHERE aq.assignment_id = $1`,
     [assignmentId]
   );
   await runAsync(
-    `UPDATE assignments SET total_marks = ? WHERE id = ?`,
+    `UPDATE assignments SET total_marks = $1 WHERE id = $2`,
     [result.total, assignmentId]
   );
 }
@@ -31,11 +31,11 @@ async function updatePaperTotalMarks(paperId) {
     `SELECT COALESCE(SUM(q.marks), 0) as total
      FROM question_paper_questions pq
      JOIN questions q ON q.id = pq.question_id
-     WHERE pq.paper_id = ?`,
+     WHERE pq.paper_id = $1`,
     [paperId]
   );
   await runAsync(
-    `UPDATE question_papers SET total_marks = ? WHERE id = ?`,
+    `UPDATE question_papers SET total_marks = $1 WHERE id = $2`,
     [result.total, paperId]
   );
 }
@@ -54,7 +54,7 @@ export default async function handler(req, res) {
     if (id) {
       try {
         const row = await getAsync(
-          `SELECT * FROM questions WHERE id = ?`,
+          `SELECT * FROM questions WHERE id = $1`,
           [id],
         );
         if (!row)
@@ -73,7 +73,7 @@ export default async function handler(req, res) {
           `SELECT q.*, aq.position
            FROM assignment_questions aq
            JOIN questions q ON q.id = aq.question_id
-           WHERE aq.assignment_id = ?
+           WHERE aq.assignment_id = $1
            ORDER BY aq.position ASC`,
           [assignmentId],
         );
@@ -93,7 +93,7 @@ export default async function handler(req, res) {
           `SELECT q.*, pq.position
            FROM question_paper_questions pq
            JOIN questions q ON q.id = pq.question_id
-           WHERE pq.paper_id = ?
+           WHERE pq.paper_id = $1
            ORDER BY pq.position ASC`,
           [paperId],
         );
@@ -130,24 +130,28 @@ export default async function handler(req, res) {
 
         if (assignmentId) {
           const existing = await allAsync(
-            `SELECT position FROM assignment_questions WHERE assignment_id = ? ORDER BY position DESC LIMIT 1`,
+            `SELECT position FROM assignment_questions WHERE assignment_id = $1 ORDER BY position DESC LIMIT 1`,
             [assignmentId],
           );
           const nextPos = existing[0] ? existing[0].position + 1 : 0;
           await runAsync(
-            `INSERT OR REPLACE INTO assignment_questions (assignment_id, question_id, position) VALUES (?, ?, ?)`,
+            `INSERT INTO assignment_questions (assignment_id, question_id, position)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (assignment_id, question_id) DO UPDATE SET position = EXCLUDED.position`,
             [assignmentId, qid, nextPos],
           );
           // Update total_marks
           await updateAssignmentTotalMarks(assignmentId);
         } else if (paperId) {
           const existing = await allAsync(
-            `SELECT position FROM question_paper_questions WHERE paper_id = ? ORDER BY position DESC LIMIT 1`,
+            `SELECT position FROM question_paper_questions WHERE paper_id = $1 ORDER BY position DESC LIMIT 1`,
             [paperId],
           );
           const nextPos = existing[0] ? existing[0].position + 1 : 0;
           await runAsync(
-            `INSERT OR REPLACE INTO question_paper_questions (paper_id, question_id, position) VALUES (?, ?, ?)`,
+            `INSERT INTO question_paper_questions (paper_id, question_id, position)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (paper_id, question_id) DO UPDATE SET position = EXCLUDED.position`,
             [paperId, qid, nextPos],
           );
           // Update total_marks
@@ -186,8 +190,11 @@ export default async function handler(req, res) {
           : null;
 
       const result = await runAsync(
-        `INSERT INTO questions (type, marks, difficulty, topic, subject, text, options_json, correct_index, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO questions
+           (type, marks, difficulty, topic, subject, text, options_json, correct_index, created_at, updated_at)
+         VALUES
+           ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING *`,
         [
           type,
           marks != null ? Number(marks) : 1,
@@ -201,9 +208,7 @@ export default async function handler(req, res) {
           now,
         ],
       );
-      const row = await getAsync(`SELECT * FROM questions WHERE id = ?`, [
-        result.lastID,
-      ]);
+      const row = result.rows[0];
       return res.status(201).json(normalizeRow(row));
     } catch (err) {
       console.error("Error creating question:", err);
@@ -215,7 +220,7 @@ export default async function handler(req, res) {
   if (req.method === "PUT" && id && !reorder) {
     try {
       const existing = await getAsync(
-        `SELECT * FROM questions WHERE id = ?`,
+        `SELECT * FROM questions WHERE id = $1`,
         [id],
       );
       if (!existing)
@@ -252,8 +257,9 @@ export default async function handler(req, res) {
 
       await runAsync(
         `UPDATE questions
-         SET type = ?, marks = ?, difficulty = ?, topic = ?, subject = ?, text = ?, options_json = ?, correct_index = ?, updated_at = ?
-         WHERE id = ?`,
+         SET type = $1, marks = $2, difficulty = $3, topic = $4, subject = $5, text = $6,
+             options_json = $7, correct_index = $8, updated_at = $9
+         WHERE id = $10`,
         [
           type || existing.type,
           marks != null ? Number(marks) : existing.marks,
@@ -272,7 +278,7 @@ export default async function handler(req, res) {
       if (marks != null && Number(marks) !== existing.marks) {
         // Update assignments
         const affectedAssignments = await allAsync(
-          `SELECT DISTINCT assignment_id FROM assignment_questions WHERE question_id = ?`,
+          `SELECT DISTINCT assignment_id FROM assignment_questions WHERE question_id = $1`,
           [id]
         );
         for (const { assignment_id } of affectedAssignments) {
@@ -281,7 +287,7 @@ export default async function handler(req, res) {
         
         // Update papers
         const affectedPapers = await allAsync(
-          `SELECT DISTINCT paper_id FROM question_paper_questions WHERE question_id = ?`,
+          `SELECT DISTINCT paper_id FROM question_paper_questions WHERE question_id = $1`,
           [id]
         );
         for (const { paper_id } of affectedPapers) {
@@ -289,7 +295,7 @@ export default async function handler(req, res) {
         }
       }
       
-      const row = await getAsync(`SELECT * FROM questions WHERE id = ?`, [id]);
+      const row = await getAsync(`SELECT * FROM questions WHERE id = $1`, [id]);
       return res.status(200).json(normalizeRow(row));
     } catch (err) {
       console.error("Error updating question:", err);
@@ -312,10 +318,10 @@ export default async function handler(req, res) {
       const col = assignmentId ? "assignment_id" : "paper_id";
       const ownerId = assignmentId || paperId;
 
-      await runAsync(`BEGIN TRANSACTION`);
+      await runAsync(`BEGIN`);
       for (let i = 0; i < order.length; i++) {
         await runAsync(
-          `UPDATE ${table} SET position = ? WHERE ${col} = ? AND question_id = ?`,
+          `UPDATE ${table} SET position = $1 WHERE ${col} = $2 AND question_id = $3`,
           [i, ownerId, order[i]],
         );
       }
@@ -334,7 +340,7 @@ export default async function handler(req, res) {
     if (assignmentId && questionId) {
       try {
         await runAsync(
-          `DELETE FROM assignment_questions WHERE assignment_id = ? AND question_id = ?`,
+          `DELETE FROM assignment_questions WHERE assignment_id = $1 AND question_id = $2`,
           [assignmentId, questionId],
         );
         // Update total_marks
@@ -348,7 +354,7 @@ export default async function handler(req, res) {
     if (paperId && questionId) {
       try {
         await runAsync(
-          `DELETE FROM question_paper_questions WHERE paper_id = ? AND question_id = ?`,
+          `DELETE FROM question_paper_questions WHERE paper_id = $1 AND question_id = $2`,
           [paperId, questionId],
         );
         // Update total_marks
@@ -365,26 +371,26 @@ export default async function handler(req, res) {
       try {
         // Get all assignments and papers that contain this question
         const affectedAssignments = await allAsync(
-          `SELECT DISTINCT assignment_id FROM assignment_questions WHERE question_id = ?`,
+          `SELECT DISTINCT assignment_id FROM assignment_questions WHERE question_id = $1`,
           [id]
         );
         const affectedPapers = await allAsync(
-          `SELECT DISTINCT paper_id FROM question_paper_questions WHERE question_id = ?`,
+          `SELECT DISTINCT paper_id FROM question_paper_questions WHERE question_id = $1`,
           [id]
         );
         
         // Delete from junction tables (CASCADE should handle this, but let's be explicit)
         await runAsync(
-          `DELETE FROM assignment_questions WHERE question_id = ?`,
+          `DELETE FROM assignment_questions WHERE question_id = $1`,
           [id]
         );
         await runAsync(
-          `DELETE FROM question_paper_questions WHERE question_id = ?`,
+          `DELETE FROM question_paper_questions WHERE question_id = $1`,
           [id]
         );
         
         // Delete the question itself
-        await runAsync(`DELETE FROM questions WHERE id = ?`, [id]);
+        await runAsync(`DELETE FROM questions WHERE id = $1`, [id]);
         
         // Update total_marks for all affected assignments and papers
         for (const { assignment_id } of affectedAssignments) {
