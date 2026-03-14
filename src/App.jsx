@@ -131,9 +131,10 @@ function App() {
     if (view === "home") reloadDocuments();
   }, [view]);
 
+  // When entering paper builder, always fetch latest paper so template shows saved values (no stale cache).
   useEffect(() => {
-    if (view !== "paperBuilder" || !openPaperId || paperTemplate) return;
-    fetchJson(`/api/papers?id=${openPaperId}`)
+    if (view !== "paperBuilder" || !openPaperId) return;
+    fetchJson(`/api/papers?id=${openPaperId}`, { cache: false })
       .then((paper) => {
         setPaperTemplate({
           schoolName: paper.school_name || "",
@@ -148,7 +149,6 @@ function App() {
         });
       })
       .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, openPaperId]);
 
   const handleEditDocument = (id) => {
@@ -249,6 +249,26 @@ function App() {
       <>
         <QuestionBankApp
           paperTemplate={paperTemplate}
+          onPaperTemplateChange={(template) => setPaperTemplate(template)}
+          onPaperTemplateSave={(template) => {
+            if (!openPaperId || !template) return;
+            fetch(`/api/papers?id=${openPaperId}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                title: template.subject || "Question Paper",
+                schoolName: template.schoolName ?? null,
+                schoolAddress: template.schoolAddress ?? null,
+                grade: template.grade ?? null,
+                subject: template.subject ?? null,
+                examType: template.examType ?? null,
+                duration: template.duration ?? null,
+                totalMarks: template.totalMarks ? Number(template.totalMarks) : null,
+                academicYear: template.academicYear ?? null,
+                examDate: template.date ?? null,
+              }),
+            }).catch((err) => console.error("Failed to save paper template", err));
+          }}
           onBack={() => {
             setOpenPaperId(null);
             setView(builderOrigin);

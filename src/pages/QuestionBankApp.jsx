@@ -114,7 +114,7 @@ function loadInitialState() {
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 
-export default function App({ paperTemplate, onBack, openAssignmentId, openPaperId, onCreateDocument, onGoHome }) {
+export default function App({ paperTemplate, onPaperTemplateChange, onPaperTemplateSave, onBack, openAssignmentId, openPaperId, onCreateDocument, onGoHome }) {
   const isPaperMode = Boolean(openPaperId);
   const initial = loadInitialState();
 
@@ -142,6 +142,13 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
   // Tracks when we just created a local assignment so the sync effect
   // doesn't immediately overwrite activeAssignmentId back to openAssignmentId.
   const justCreatedRef = useRef(false);
+  // Holds the latest paper template (including in-flight edits) so blur and export save correctly.
+  const paperTemplateLatestRef = useRef(paperTemplate);
+  useEffect(() => {
+    paperTemplateLatestRef.current = paperTemplate;
+  }, [paperTemplate]);
+  // Controls whether the paper header template editor is expanded
+  const [headerExpanded, setHeaderExpanded] = useState(false);
 
   function pushToast(message, variant = "info") {
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -177,9 +184,9 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
               fetchJson("/api/assignments", { cache: false }),
               fetchJson(`/api/assignments?id=${openAssignmentId}`, { cache: false }),
             ]);
-            
+
             console.log("[loadFromBackend] Fetched assignment details:", activeAssignmentFull);
-            
+
             // Build enriched list: full data for active, basic data for others
             const enriched = allAssignments.map(a => {
               if (String(a.id) === String(openAssignmentId)) {
@@ -188,7 +195,7 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
               }
               return { id: String(a.id), name: a.name, questionIds: [] };
             });
-            
+
             // CRITICAL FIX: If the active assignment isn't in the list yet (race condition),
             // add it explicitly. This happens when creating a new assignment.
             const hasActiveAssignment = enriched.some(a => String(a.id) === String(openAssignmentId));
@@ -201,7 +208,7 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
               });
               console.log("[loadFromBackend] Active assignment not in list, added it:", activeAssignmentFull);
             }
-            
+
             console.log("[loadFromBackend] Setting assignments:", enriched);
             setAssignments(enriched);
             setActiveAssignmentId(String(openAssignmentId));
@@ -217,10 +224,10 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
         // No openAssignmentId: load all assignments without questions
         console.log("[loadFromBackend] Loading all assignments (no specific ID)");
         const as = await fetchJson("/api/assignments");
-        const basicAssignments = as.map(a => ({ 
-          id: String(a.id), 
-          name: a.name, 
-          questionIds: [] 
+        const basicAssignments = as.map(a => ({
+          id: String(a.id),
+          name: a.name,
+          questionIds: []
         }));
 
         setAssignments(basicAssignments);
@@ -251,25 +258,25 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
   // ── Load questions for active assignment if not already loaded ────────────────
   useEffect(() => {
     if (!activeAssignmentId || isPaperMode) return;
-    
+
     const assignment = assignments.find(a => a.id === activeAssignmentId);
     if (!assignment) return;
-    
+
     // Only fetch if questionIds is an empty array (not loaded yet)
     // Skip if it's undefined (new assignment) or has items (already loaded)
     const needsLoad = Array.isArray(assignment.questionIds) && assignment.questionIds.length === 0;
-    
+
     if (needsLoad) {
       console.log("[loadAssignmentQuestions] Loading questions for assignment:", activeAssignmentId);
-      
+
       fetchJson(`/api/assignments?id=${activeAssignmentId}`, { cache: false })
         .then(data => {
           const qIds = (data.questions || []).map(q => String(q.id));
           console.log("[loadAssignmentQuestions] Loaded question IDs:", qIds);
-          
+
           // Update just this assignment's questionIds
-          setAssignments(prev => prev.map(a => 
-            a.id === activeAssignmentId 
+          setAssignments(prev => prev.map(a =>
+            a.id === activeAssignmentId
               ? { ...a, questionIds: qIds }
               : a
           ));
@@ -344,7 +351,7 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
       } else {
         await fetch(base, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ questionId: qid }) });
       }
-    } catch (err) { 
+    } catch (err) {
       console.error("Failed to sync question toggle", err);
       pushToast("Failed to save changes to server", "error");
     }
@@ -495,33 +502,85 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
     setQuestions(prev => prev.filter(q => q.id !== id));
     setAssignments(prev => prev.map(a => ({ ...a, questionIds: a.questionIds.filter(qid => qid !== id) })));
     if (activeQuestionId === id) setActiveQuestionId(null);
-    try { 
+    try {
       await fetch(`/api/questions?id=${id}`, { method: "DELETE" });
       // Invalidate cache so next load gets fresh data
       invalidateCache("/api/questions");
       invalidateCache("/api/assignments");
       invalidateCache("/api/papers");
-    } catch (err) { 
-      console.error(err); 
+    } catch (err) {
+      console.error(err);
     }
     pushToast("Question deleted", "info");
   }
 
   // ── Export ────────────────────────────────────────────────────────────────
   function buildExportHeader(paperTemplate, title) {
-    if (!paperTemplate) return `<h1>${title}</h1>`;
-    let h = `<div style="text-align:center;border-bottom:1px solid #e5e7eb;padding-bottom:8px;margin-bottom:8px;">`;
-    h += `<p style="font-weight:bold;font-size:14px;margin:0;">${paperTemplate.schoolName || "School Name"}</p>`;
-    h += `<p style="font-size:12px;color:#4b5563;margin:4px 0 0;">${paperTemplate.schoolAddress || ""}</p></div>`;
-    h += `<div style="text-align:center;margin-bottom:8px;"><p style="font-weight:600;margin:0;">${paperTemplate.examType || ""}</p>`;
-    h += `<p style="font-size:12px;color:#4b5563;margin:2px 0 0;">Academic Year: ${paperTemplate.academicYear || ""}</p></div>`;
-    h += `<div style="display:flex;flex-wrap:wrap;font-size:12px;margin-bottom:8px;">`;
-    h += `<span style="margin-right:12px;"><strong>Class:</strong> ${paperTemplate.grade || ""}</span>`;
-    h += `<span style="margin-right:12px;"><strong>Subject:</strong> ${paperTemplate.subject || ""}</span>`;
-    h += `<span style="margin-right:12px;"><strong>Duration:</strong> ${paperTemplate.duration || ""}</span>`;
-    h += `<span style="margin-right:12px;"><strong>Max Marks:</strong> ${paperTemplate.totalMarks || ""}</span>`;
-    if (paperTemplate.date) h += `<span><strong>Date:</strong> ${new Date(paperTemplate.date).toLocaleDateString()}</span>`;
-    h += `</div><hr style="margin:12px 0;" />`;
+    if (!paperTemplate) return `<h1 style="margin:0 0 16px;">${title}</h1>`;
+
+    // Row 1 – School name & address (centred)
+    let h = `<div style="text-align:center;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:8px;">`;
+    h += `<p style="font-weight:bold;font-size:16px;margin:0;">${paperTemplate.schoolName || "School Name"}</p>`;
+    if (paperTemplate.schoolAddress) {
+      h += `<p style="font-size:12px;color:#4b5563;margin:3px 0 0;">${paperTemplate.schoolAddress}</p>`;
+    }
+    h += `</div>`;
+
+    // Row 2 – Exam type & academic year (centred)
+    h += `<div style="text-align:center;margin-bottom:10px;">`;
+    if (paperTemplate.examType) h += `<p style="font-weight:700;font-size:14px;margin:0;">${paperTemplate.examType}</p>`;
+    if (paperTemplate.academicYear) h += `<p style="font-size:12px;color:#4b5563;margin:2px 0 0;">Academic Year: ${paperTemplate.academicYear}</p>`;
+    h += `</div>`;
+
+    // Row 3 – Class / Subject  |  Duration / Max Marks  (2×2 centred grid)
+    const fields = [
+      { label: "Class", value: paperTemplate.grade || "" },
+      { label: "Subject", value: paperTemplate.subject || "" },
+      { label: "Duration", value: paperTemplate.duration || "" },
+      { label: "Max Marks", value: String(paperTemplate.totalMarks ?? "") },
+    ];
+    if (paperTemplate.date) {
+      fields.push({ label: "Date", value: new Date(paperTemplate.date).toLocaleDateString() });
+    }
+
+    h += `<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px;">`;
+    h += `<tr>`;
+    // Pair fields into columns: [Class, Subject] on row 1, [Duration, Max Marks] on row 2, Date spans
+    const pairs = [];
+    for (let i = 0; i < fields.length; i += 2) {
+      pairs.push([fields[i], fields[i + 1]]);
+    }
+    h += `</tr>`;
+    h = h.slice(0, -5); // remove stray </tr>
+    pairs.forEach(([left, right]) => {
+      h += `<tr>`;
+      h += `<td style="padding:3px 8px;text-align:center;width:50%;border:1px solid #d1d5db;">`;
+      h += `<strong>${left.label}:</strong> ${left.value}`;
+      h += `</td>`;
+      if (right) {
+        h += `<td style="padding:3px 8px;text-align:center;width:50%;border:1px solid #d1d5db;">`;
+        h += `<strong>${right.label}:</strong> ${right.value}`;
+        h += `</td>`;
+      } else {
+        h += `<td style="padding:3px 8px;text-align:center;width:50%;border:1px solid #d1d5db;"></td>`;
+      }
+      h += `</tr>`;
+    });
+    h += `</table>`;
+
+    // Row 4 – Student name & roll no
+    h += `<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px;">`;
+    h += `<tr>`;
+    h += `<td style="padding:5px 8px;width:60%;border:1px solid #d1d5db;">`;
+    h += `<strong>Student Name:</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`;
+    h += `</td>`;
+    h += `<td style="padding:5px 8px;width:40%;border:1px solid #d1d5db;">`;
+    h += `<strong>Roll No.:</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`;
+    h += `</td>`;
+    h += `</tr>`;
+    h += `</table>`;
+
+    h += `<hr style="border:none;border-top:1px solid #9ca3af;margin:4px 0 14px;" />`;
     return h;
   }
 
@@ -532,15 +591,17 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
       if (q.type === "MCQ" && q.options?.length) {
         html += `<ul>${q.options.map((o, i) => `<li>${["A", "B", "C", "D"][i]}. ${o}${withAnswer && q.correctIndex === i ? " ✓" : ""}</li>`).join("")}</ul>`;
       }
-      html += `<p><em>${q.type} · ${q.marks} pts${q.difficulty != null ? ` · Difficulty ${q.difficulty}` : ""}</em></p></li>`;
+      html += `<p><em>${q.marks} pts</em></p></li>`;
     });
     return html + "</ol>";
   }
 
   function exportDoc() {
     if (!activeAssignment) { alert("No active assignment."); return; }
+    const templateToUse = paperTemplateLatestRef.current ?? paperTemplate;
+    onPaperTemplateSave?.(templateToUse);
     const title = activeAssignment.name;
-    const html = `<html><head><meta charset='utf-8'></head><body>${buildExportHeader(paperTemplate, title)}${buildQuestionListHtml(true)}</body></html>`;
+    const html = `<html><head><meta charset='utf-8'></head><body>${buildExportHeader(templateToUse, title)}${buildQuestionListHtml(true)}</body></html>`;
     const blob = new Blob([html], { type: "application/msword" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -551,8 +612,10 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
 
   function exportPdf() {
     if (!activeAssignment) { alert("No active assignment."); return; }
+    const templateToUse = paperTemplateLatestRef.current ?? paperTemplate;
+    onPaperTemplateSave?.(templateToUse);
     const title = activeAssignment.name;
-    const html = `<html><head><meta charset='utf-8'><title>${title}</title><style>body{font-family:system-ui;margin:32px}h1{font-size:20px}li{margin-bottom:14px}img{max-width:100%}ul{margin:6px 0}</style></head><body>${buildExportHeader(paperTemplate, title)}${buildQuestionListHtml(false)}</body></html>`;
+    const html = `<html><head><meta charset='utf-8'><title>${title}</title><style>body{font-family:system-ui;margin:32px}h1{font-size:20px}li{margin-bottom:14px}img{max-width:100%}ul{margin:6px 0}</style></head><body>${buildExportHeader(templateToUse, title)}${buildQuestionListHtml(false)}</body></html>`;
     const win = window.open("", "_blank");
     if (!win) return;
     win.document.open(); win.document.write(html); win.document.close();
@@ -623,27 +686,139 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
             </div>
           </div>
 
-          {/* Paper template preview */}
+          {/* Paper template – collapsible, editable when onPaperTemplateChange provided */}
           {paperTemplate && (
-            <div style={{ marginTop: 4, marginBottom: 8, borderRadius: 14, border: "1px solid #e5e7eb", padding: 12, background: "#f9fafb", fontSize: 11 }}>
-              <div style={{ textAlign: "center", borderBottom: "1px solid #e5e7eb", paddingBottom: 8, marginBottom: 8 }}>
-                <p style={{ fontWeight: 700, fontSize: 12, margin: 0 }}>{paperTemplate.schoolName || "School Name"}</p>
-                <p style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>{paperTemplate.schoolAddress || ""}</p>
-              </div>
-              <div style={{ textAlign: "center", marginBottom: 8 }}>
-                <p style={{ fontWeight: 600, margin: 0 }}>{paperTemplate.examType || "Exam Type"}</p>
-                <p style={{ fontSize: 11, color: "#4b5563", marginTop: 2 }}>Academic Year: {paperTemplate.academicYear || "YYYY-YYYY"}</p>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 4, marginBottom: 4 }}>
-                <div><span style={{ color: "#6b7280" }}>Class: </span>{paperTemplate.grade || ""}</div>
-                <div><span style={{ color: "#6b7280" }}>Subject: </span>{paperTemplate.subject || ""}</div>
-                <div><span style={{ color: "#6b7280" }}>Duration: </span>{paperTemplate.duration || ""}</div>
-                <div><span style={{ color: "#6b7280" }}>Max Marks: </span>{paperTemplate.totalMarks || ""}</div>
-                {paperTemplate.date && <div style={{ gridColumn: "1 / -1" }}><span style={{ color: "#6b7280" }}>Date: </span>{new Date(paperTemplate.date).toLocaleDateString()}</div>}
-              </div>
-              <div style={{ borderTop: "1px dashed #e5e7eb", paddingTop: 6, textAlign: "center" }}>
-                <span style={{ fontSize: 11, color: "#9ca3af" }}>Questions will appear below this header</span>
-              </div>
+            <div style={{ marginTop: 4, marginBottom: 4, borderRadius: 14, border: "1px solid #e5e7eb", background: "#f9fafb", fontSize: 11, flexShrink: 0 }}>
+
+              {/* ── Collapsed header bar – always visible ── */}
+              <button
+                type="button"
+                onClick={() => setHeaderExpanded(o => !o)}
+                style={{
+                  width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "9px 14px", background: "none", border: "none", cursor: "pointer",
+                  borderRadius: headerExpanded ? "14px 14px 0 0" : 14,
+                  borderBottom: headerExpanded ? "1px solid #e5e7eb" : "none",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 13 }}>📄</span>
+                  <div style={{ textAlign: "left" }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "#0f172a" }}>
+                      {paperTemplate.schoolName || "School Name"}
+                    </span>
+                    <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 8 }}>
+                      {[paperTemplate.examType, paperTemplate.grade, paperTemplate.subject].filter(Boolean).join(" · ") || "Paper details"}
+                    </span>
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 10, color: "#6366f1", fontWeight: 600 }}>
+                    {headerExpanded ? "Collapse" : "Edit header"}
+                  </span>
+                  <svg
+                    width="14" height="14" viewBox="0 0 24 24" fill="none"
+                    stroke="#6366f1" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                    style={{ transition: "transform 0.2s", transform: headerExpanded ? "rotate(180deg)" : "rotate(0deg)" }}
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </div>
+              </button>
+
+              {/* ── Expanded editor ── */}
+              {headerExpanded && (
+                <div style={{ padding: "14px 16px 12px" }}>
+
+                  {/* Row 1: School name + address (centred, like the printed output) */}
+                  <div style={{ textAlign: "center", borderBottom: "1px solid #e5e7eb", paddingBottom: 10, marginBottom: 10 }}>
+                    <input
+                      type="text"
+                      value={paperTemplate.schoolName || ""}
+                      onChange={e => {
+                        const next = { ...paperTemplate, schoolName: e.target.value };
+                        paperTemplateLatestRef.current = next;
+                        onPaperTemplateChange?.(next);
+                      }}
+                      onBlur={() => onPaperTemplateSave?.(paperTemplateLatestRef.current)}
+                      placeholder="School Name"
+                      style={{ ...inputStyle, fontWeight: 700, fontSize: 12, textAlign: "center", marginBottom: 4, width: "100%", maxWidth: 360 }}
+                    />
+                    <br />
+                    <input
+                      type="text"
+                      value={paperTemplate.schoolAddress || ""}
+                      onChange={e => {
+                        const next = { ...paperTemplate, schoolAddress: e.target.value };
+                        paperTemplateLatestRef.current = next;
+                        onPaperTemplateChange?.(next);
+                      }}
+                      onBlur={() => onPaperTemplateSave?.(paperTemplateLatestRef.current)}
+                      placeholder="School Address (optional)"
+                      style={{ ...inputStyle, fontSize: 11, textAlign: "center", width: "100%", maxWidth: 360, color: "#6b7280" }}
+                    />
+                  </div>
+
+                  {/* Row 2: Exam type + academic year (centred) */}
+                  <div style={{ textAlign: "center", borderBottom: "1px solid #e5e7eb", paddingBottom: 10, marginBottom: 10 }}>
+                    <input
+                      type="text"
+                      value={paperTemplate.examType || ""}
+                      onChange={e => {
+                        const next = { ...paperTemplate, examType: e.target.value };
+                        paperTemplateLatestRef.current = next;
+                        onPaperTemplateChange?.(next);
+                      }}
+                      onBlur={() => onPaperTemplateSave?.(paperTemplateLatestRef.current)}
+                      placeholder="Exam Type (e.g. Mid-Term)"
+                      style={{ ...inputStyle, fontWeight: 600, textAlign: "center", marginBottom: 4, width: "100%", maxWidth: 260 }}
+                    />
+                    <br />
+                    <input
+                      type="text"
+                      value={paperTemplate.academicYear || ""}
+                      onChange={e => {
+                        const next = { ...paperTemplate, academicYear: e.target.value };
+                        paperTemplateLatestRef.current = next;
+                        onPaperTemplateChange?.(next);
+                      }}
+                      onBlur={() => onPaperTemplateSave?.(paperTemplateLatestRef.current)}
+                      placeholder="Academic Year (e.g. 2024-25)"
+                      style={{ ...inputStyle, fontSize: 11, textAlign: "center", width: "100%", maxWidth: 260, color: "#4b5563" }}
+                    />
+                  </div>
+
+                  {/* Row 3: Class / Subject / Duration / Max Marks / Date – 2-col grid */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 12px" }}>
+                    {[
+                      { label: "Class", key: "grade", placeholder: "e.g. Grade 6" },
+                      { label: "Subject", key: "subject", placeholder: "e.g. Science" },
+                      { label: "Duration", key: "duration", placeholder: "e.g. 2 hours" },
+                      { label: "Max Marks", key: "totalMarks", placeholder: "e.g. 40" },
+                    ].map(({ label, key, placeholder }) => (
+                      <label key={key} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: "#6b7280" }}>{label}</span>
+                        <input
+                          type="text"
+                          value={paperTemplate[key] ?? ""}
+                          onChange={e => {
+                            const next = { ...paperTemplate, [key]: e.target.value };
+                            paperTemplateLatestRef.current = next;
+                            onPaperTemplateChange?.(next);
+                          }}
+                          onBlur={() => onPaperTemplateSave?.(paperTemplateLatestRef.current)}
+                          placeholder={placeholder}
+                          style={{ ...inputStyle, fontSize: 11 }}
+                        />
+                      </label>
+                    ))}
+                  </div>
+
+                  <p style={{ margin: "10px 0 0", fontSize: 10, color: "#9ca3af", textAlign: "center" }}>
+                    Changes save automatically. Questions will appear below this header in the export.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
