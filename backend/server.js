@@ -862,7 +862,5 @@ app.put("/papers/:id/reorder", async (req, res) => {
 // GET /health — quick check that the server is alive
 app.get("/health", (_req, res) => res.json({ ok: true, model: GEMINI_MODEL }));
 
-app.listen(PORT, () => {
-  console.log(`✅  AI Question Generator running at http://localhost:${PORT}`);
-  console.log(`    Model : ${GEMINI_MODEL}`);
-});
+// Export helpers so Vercel serverless functions can reuse the DB + Gemini logic
+export { db, runAsync, getAsync, allAsync, generateQuestionsWithGemini, GEMINI_MODEL };

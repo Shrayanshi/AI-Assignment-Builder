@@ -24,7 +24,7 @@ export function AiQuestionGenerator({ onQuestionsGenerated }) {
     setIsLoading(true);
 
     try {
-      const res = await fetch("http://localhost:3001/generate-questions", {
+      const res = await fetch("/api/generate-questions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -103,7 +103,7 @@ export function AiQuestionGenerator({ onQuestionsGenerated }) {
             display: "flex",
             alignItems: "center",
             gap: 6,
-            fontFamily: "'Sora', sans-serif",
+            fontFamily: "'DM Sans', sans-serif",
             fontSize: 12,
             fontWeight: 600,
             color: "#111827",

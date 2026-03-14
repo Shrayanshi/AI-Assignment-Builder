@@ -5,6 +5,7 @@ import { QuestionCard } from "../components/QuestionBank/QuestionCard";
 import { AiQuestionGenerator } from "../components/QuestionBank/AiQuestionGenerator";
 import { ToastStack } from "../components/ui/Toast";
 import { Button } from "../components/ui/Button";
+import { fetchJson } from "../lib/apiClient";
 import {
   panelStyle,
   inputStyle,
@@ -185,9 +186,7 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
   useEffect(() => {
     async function loadFromBackend() {
       try {
-        const qRes = await fetch("http://localhost:3001/questions");
-        if (!qRes.ok) return;
-        const qs = await qRes.json();
+        const qs = await fetchJson("/api/questions");
         const normalizedQs = qs.map((q) => ({
           ...q,
           id: String(q.id),
@@ -196,7 +195,7 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
         setQuestions(normalizedQs);
 
         if (openPaperId) {
-          const paperRes = await fetch(`http://localhost:3001/papers/${openPaperId}`);
+          const paperRes = await fetch(`/api/papers/${openPaperId}`);
           if (!paperRes.ok) return;
           const paper = await paperRes.json();
           const qIds = (paper.questions || []).map((q) => String(q.id));
@@ -211,14 +210,12 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
           return;
         }
 
-        const aRes = await fetch("http://localhost:3001/assignments");
-        if (!aRes.ok) return;
-        const as = await aRes.json();
+        const as = await fetchJson("/api/assignments");
         const enrichedAssignments = await Promise.all(
           as.map(async (a) => {
             try {
               const full = await fetch(
-                `http://localhost:3001/assignments/${a.id}`,
+                `/api/assignments/${a.id}`,
               ).then((r) => r.json());
               const qIds = (full.questions || []).map((q) => String(q.id));
               return { id: String(a.id), name: a.name, questionIds: qIds };
@@ -311,12 +308,12 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
       if (isPaperMode) {
         if (already) {
           await fetch(
-            `http://localhost:3001/papers/${targetId}/questions/${qid}`,
+            `/api/papers/${targetId}/questions/${qid}`,
             { method: "DELETE" },
           );
         } else {
           await fetch(
-            `http://localhost:3001/papers/${targetId}/questions`,
+            `/api/papers/${targetId}/questions`,
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -327,12 +324,12 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
       } else {
         if (already) {
           await fetch(
-            `http://localhost:3001/assignments/${targetId}/questions/${qid}`,
+            `/api/assignments/${targetId}/questions/${qid}`,
             { method: "DELETE" },
           );
         } else {
           await fetch(
-            `http://localhost:3001/assignments/${targetId}/questions`,
+            `/api/assignments/${targetId}/questions`,
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -350,7 +347,7 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
     const name = window.prompt("New assignment name:");
     if (!name) return;
     try {
-      const res = await fetch("http://localhost:3001/assignments", {
+      const res = await fetch("/api/assignments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -409,7 +406,7 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
     // CREATE
     if (editorMode === "create" || !editorDraft.id) {
       try {
-        const res = await fetch("http://localhost:3001/questions", {
+        const res = await fetch("/api/questions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -434,7 +431,7 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
           try {
             if (isPaperMode) {
               await fetch(
-                `http://localhost:3001/papers/${activeAssignment.id}/questions`,
+                `/api/papers/${activeAssignment.id}/questions`,
                 {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -443,7 +440,7 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
               );
             } else {
               await fetch(
-                `http://localhost:3001/assignments/${activeAssignment.id}/questions`,
+                `/api/assignments/${activeAssignment.id}/questions`,
                 {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -465,7 +462,7 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
       // EDIT
       try {
         const res = await fetch(
-          `http://localhost:3001/questions/${editorDraft.id}`,
+          `/api/questions/${editorDraft.id}`,
           {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
@@ -595,7 +592,7 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
     }
 
     try {
-      await fetch(`http://localhost:3001/questions/${id}`, { method: "DELETE" });
+      await fetch(`/api/questions/${id}`, { method: "DELETE" });
     } catch (err) {
       console.error("Failed to delete question on server", err);
     }
@@ -650,7 +647,7 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
   function exportPdf() {
     if (!activeAssignment) { alert("No active assignment."); return; }
     const title = activeAssignment.name;
-    let html = `<html><head><meta charset='utf-8'><title>${title}</title><style>body{font-family:system-ui;margin:32px}h1{font-size:20px}li{margin-bottom:14px}img{max-width:100%}ul{margin:6px 0}</style></head><body>`;
+    let html = `<html><head><meta charset='utf-8'><title>${title}</title><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"><style>body{font-family:'DM Sans',system-ui,sans-serif;margin:32px}h1{font-size:20px}li{margin-bottom:14px}img{max-width:100%}ul{margin:6px 0}</style></head><body>`;
 
     if (paperTemplate) {
       html += `<div style="text-align:center;border-bottom:1px solid #e5e7eb;padding-bottom:8px;margin-bottom:8px;">`;
@@ -706,8 +703,8 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
     updateAssignmentIds(order);
 
     const url = isPaperMode
-      ? `http://localhost:3001/papers/${activeAssignment.id}/reorder`
-      : `http://localhost:3001/assignments/${activeAssignment.id}/reorder`;
+      ? `/api/papers/${activeAssignment.id}/reorder`
+      : `/api/assignments/${activeAssignment.id}/reorder`;
     fetch(url, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -722,7 +719,7 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap');
+        /* DM Sans loaded globally via index.html */
         *, *::before, *::after { box-sizing: border-box; }
         body { margin: 0; font-family: 'DM Sans', sans-serif; background: #f1f5f9; color: #111827; height: 100vh; overflow: hidden; }
         ::-webkit-scrollbar { width: 5px; }
@@ -767,7 +764,7 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
                 </Button>
               )}
               <div>
-                <h1 style={{ margin: 0, fontFamily: "'Sora', sans-serif", fontSize: 22, fontWeight: 700, color: "#0f172a", letterSpacing: "-0.02em" }}>
+                <h1 style={{ margin: 0, fontFamily: "'DM Sans', sans-serif", fontSize: 22, fontWeight: 700, color: "#0f172a", letterSpacing: "-0.02em" }}>
                   Question Bank <span style={{ color: "#6366f1" }}>&</span> Assignment Builder
                 </h1>
                 <p style={{ margin: "6px 0 0", fontSize: 13, color: "#64748b" }}>
@@ -781,7 +778,7 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
               border: "1px solid #c7d2fe", flexShrink: 0,
             }}>
               <span style={{ fontSize: 14 }}>✦</span>
-              <span style={{ fontSize: 11, fontWeight: 600, color: "#4f46e5", fontFamily: "'Sora', sans-serif" }}>By Shrayanshi</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "#4f46e5", fontFamily: "'DM Sans', sans-serif" }}>By Shrayanshi</span>
             </div>
           </div>
 
@@ -890,7 +887,7 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
                         if (titleDraft.trim()) {
                           setAssignments(prev => prev.map(a => a.id === activeAssignmentId ? { ...a, name: titleDraft } : a));
                           if (isPaperMode && activeAssignmentId) {
-                            fetch(`http://localhost:3001/papers/${activeAssignmentId}`, {
+                            fetch(`/api/papers/${activeAssignmentId}`, {
                               method: "PUT",
                               headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({ title: titleDraft.trim() }),
@@ -900,10 +897,10 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
                         setEditingTitle(false);
                       }}
                       onKeyDown={e => { if (e.key === "Enter") e.target.blur(); }}
-                      style={{ ...inputStyle, fontSize: 13, fontWeight: 600, fontFamily: "'Sora', sans-serif" }}
+                      style={{ ...inputStyle, fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}
                     />
                   ) : (
-                    <div onClick={() => setEditingTitle(true)} style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", fontFamily: "'Sora', sans-serif", cursor: "pointer" }}>
+                    <div onClick={() => setEditingTitle(true)} style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif", cursor: "pointer" }}>
                       {activeAssignment?.name || (isPaperMode ? "Question Paper" : "Untitled Assignment")}
                     </div>
                   )}
@@ -960,7 +957,7 @@ export default function App({ paperTemplate, onBack, openAssignmentId, openPaper
               <div style={{ flexShrink: 0, marginBottom: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", fontFamily: "'Sora', sans-serif" }}>Question Bank</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>Question Bank</div>
                     <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>Search, create, edit or AI-suggest questions.</div>
                   </div>
                   <Button onClick={() => openEditor("create", null)} style={{ padding: "8px 14px", minHeight: "auto" }}>

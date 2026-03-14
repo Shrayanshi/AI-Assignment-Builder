@@ -334,7 +334,7 @@ export function EditorModal({ mode, draft, onChangeDraft, onSave, onCancel }) {
         }}
       >
         {/* Title */}
-        <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "'Sora', sans-serif" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", fontFamily: "'DM Sans', sans-serif" }}>
           {isCreate ? "✦ New Question" : "✎ Edit Question"}
         </div>
 

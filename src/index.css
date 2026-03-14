@@ -1,0 +1,5 @@
+/* Single project font: DM Sans */
+body,
+#root {
+  font-family: 'DM Sans', system-ui, sans-serif;
+}

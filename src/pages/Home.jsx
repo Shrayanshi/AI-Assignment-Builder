@@ -220,7 +220,7 @@ export function HomePage({
                       ))}
                     </select>
                   </label>
-                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     <span style={{ fontSize: 10, fontWeight: 600, color: "#6b7280" }}>Exam type</span>
                     <select
                       value={filterPaperExamType}
@@ -357,7 +357,7 @@ export function HomePage({
                         </Button>
                       )}
                       {onDeleteDocument && (
-                        <Button variant="ghost" onClick={() => confirmDelete(paper)} style={{ padding: "8px 14px", color: "#b91c1c" }}>
+                        <Button variant="ghost" onClick={() => confirmDelete(paper)} style={{ padding: "6px 12px", color: "#b91c1c" }}>
                           Delete
                         </Button>
                       )}

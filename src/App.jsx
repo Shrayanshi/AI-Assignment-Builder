@@ -4,6 +4,7 @@ import { CreateTypePage } from "./pages/CreateType";
 import { QuestionPaperSetup } from "./pages/QuestionPaperSetup";
 import QuestionBankApp from "./pages/QuestionBankApp";
 import { ToastStack } from "./components/ui/Toast";
+import { fetchJson, invalidateCache } from "./lib/apiClient";
 
 const DEFAULT_VIEW = "home";
 
@@ -83,23 +84,18 @@ function App() {
   const reloadDocuments = async () => {
     try {
       setLoadingDocs(true);
-      const [aRes, pRes] = await Promise.all([
-        fetch("http://localhost:3001/assignments"),
-        fetch("http://localhost:3001/papers"),
+      const [assignments, papers] = await Promise.all([
+        fetchJson("/api/assignments", { cache: false }),
+        fetchJson("/api/papers", { cache: false }),
       ]);
-      if (!aRes.ok || !pRes.ok) {
-        setDocuments([]);
-        return;
-      }
-      const [assignments, papers] = await Promise.all([aRes.json(), pRes.json()]);
 
       // Build assignment docs from backend
       const assignmentDocs = await Promise.all(
         assignments.map(async (a) => {
           try {
-            const full = await fetch(
-              `http://localhost:3001/assignments/${a.id}`,
-            ).then((r) => r.json());
+            const full = await fetchJson(`/api/assignments/${a.id}`, {
+              cache: false,
+            });
             const questions = full.questions || [];
             const totalMarks = questions.reduce(
               (s, q) => s + (q.marks || 0),
@@ -136,9 +132,9 @@ function App() {
       const paperDocs = await Promise.all(
         papers.map(async (p) => {
           try {
-            const full = await fetch(
-              `http://localhost:3001/papers/${p.id}`,
-            ).then((r) => r.json());
+            const full = await fetchJson(`/api/papers/${p.id}`, {
+              cache: false,
+            });
             const questions = full.questions || [];
             const totalMarks = questions.reduce(
               (s, q) => s + (q.marks || 0),
@@ -192,7 +188,7 @@ function App() {
 
   useEffect(() => {
     if (view !== "paperBuilder" || !openPaperId || paperTemplate) return;
-    fetch(`http://localhost:3001/papers/${openPaperId}`)
+    fetch(`/api/papers/${openPaperId}`)
       .then((r) => r.json())
       .then((paper) => {
         setPaperTemplate({
@@ -243,13 +239,13 @@ function App() {
     if (!doc) return;
     try {
       if (doc.kind === "paper") {
-        await fetch(`http://localhost:3001/papers/${doc.paperId}`, {
+        await fetch(`/api/papers/${doc.paperId}`, {
           method: "DELETE",
         });
         pushToast("Question paper deleted", "info");
       } else if (doc.kind === "assignment") {
         await fetch(
-          `http://localhost:3001/assignments/${doc.assignmentId}`,
+          `/api/assignments/${doc.assignmentId}`,
           { method: "DELETE" },
         );
         pushToast("Assignment deleted", "info");
@@ -257,6 +253,8 @@ function App() {
     } catch (err) {
       console.error("Failed to delete document from backend", err);
     }
+    invalidateCache("/api/assignments");
+    invalidateCache("/api/papers");
     reloadDocuments();
   };
 
@@ -269,7 +267,7 @@ function App() {
           onContinue={async (template) => {
             setBuilderOrigin("paperSetup");
             try {
-              const res = await fetch("http://localhost:3001/papers", {
+              const res = await fetch("/api/papers", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -352,7 +350,7 @@ function App() {
             const name = window.prompt("Assignment name:", "New Assignment");
             if (!name) return;
             try {
-              const res = await fetch("http://localhost:3001/assignments", {
+              const res = await fetch("/api/assignments", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ name }),
