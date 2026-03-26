@@ -1,4 +1,5 @@
 import { allAsync, runAsync, getAsync } from "../lib/db.js";
+import { requireAuth } from "../lib/authMiddleware.js";
 
 function normalizeQuestion(r) {
   if (r.options_json) r.options = JSON.parse(r.options_json);
@@ -11,9 +12,11 @@ function normalizeQuestion(r) {
 }
 
 export default async function handler(req, res) {
+  const teacherId = await requireAuth(req, res);
+  if (teacherId === null) return;
+
   const url = new URL(req.url, "http://localhost");
   const id = url.searchParams.get("id");
-  const mode = url.searchParams.get("mode"); // optional, for future use
 
   // GET /api/assignments or /api/assignments?id=123
   if (req.method === "GET") {
@@ -21,8 +24,8 @@ export default async function handler(req, res) {
     if (id) {
       try {
         const assignment = await getAsync(
-          `SELECT * FROM assignments WHERE id = $1`,
-          [id],
+          `SELECT * FROM assignments WHERE id = $1 AND teacher_id = $2`,
+          [id, teacherId],
         );
         if (!assignment)
           return res.status(404).json({ error: "Assignment not found" });
@@ -42,7 +45,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // List assignments with question count
+    // List assignments with question count (scoped to this teacher)
     try {
       const rows = await allAsync(
         `SELECT
@@ -56,8 +59,10 @@ export default async function handler(req, res) {
          FROM assignments a
          LEFT JOIN assignment_questions aq ON aq.assignment_id::text = a.id::text
          LEFT JOIN questions q ON q.id::text = aq.question_id::text
+         WHERE a.teacher_id = $1
          GROUP BY a.id
          ORDER BY a.id DESC`,
+        [teacherId],
       );
       return res.status(200).json(rows);
     } catch (err) {
@@ -75,13 +80,14 @@ export default async function handler(req, res) {
       }
       const now = new Date().toISOString();
       const insertSql = `
-        INSERT INTO assignments (name, subject, created_at, updated_at)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO assignments (name, subject, teacher_id, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING *
       `;
       const { rows } = await runAsync(insertSql, [
         name,
         subject || null,
+        teacherId,
         now,
         now,
       ]);
@@ -96,8 +102,8 @@ export default async function handler(req, res) {
   if (req.method === "PUT" && id) {
     try {
       const existing = await getAsync(
-        `SELECT * FROM assignments WHERE id = $1`,
-        [id],
+        `SELECT * FROM assignments WHERE id = $1 AND teacher_id = $2`,
+        [id, teacherId],
       );
       if (!existing)
         return res.status(404).json({ error: "Assignment not found" });
@@ -125,6 +131,12 @@ export default async function handler(req, res) {
   // DELETE /api/assignments?id=123
   if (req.method === "DELETE" && id) {
     try {
+      const existing = await getAsync(
+        `SELECT id FROM assignments WHERE id = $1 AND teacher_id = $2`,
+        [id, teacherId],
+      );
+      if (!existing)
+        return res.status(404).json({ error: "Assignment not found" });
       await runAsync(`DELETE FROM assignments WHERE id = $1`, [id]);
       return res.status(200).json({ ok: true });
     } catch (err) {
@@ -136,4 +148,3 @@ export default async function handler(req, res) {
   res.setHeader("Allow", ["GET", "POST", "PUT", "DELETE"]);
   return res.status(405).json({ error: "Method Not Allowed" });
 }
-

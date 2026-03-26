@@ -1,5 +1,10 @@
 const cache = new Map();
 
+function getAuthHeaders() {
+  const token = localStorage.getItem("auth_token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export async function fetchJson(url, options = {}) {
   const { cache: useCache = true, ...fetchOptions } = options;
   const method = (fetchOptions.method || "GET").toUpperCase();
@@ -13,7 +18,13 @@ export async function fetchJson(url, options = {}) {
     cache.delete(cacheKey);
   }
 
-  const res = await fetch(url, fetchOptions);
+  const res = await fetch(url, {
+    ...fetchOptions,
+    headers: {
+      ...getAuthHeaders(),
+      ...fetchOptions.headers,
+    },
+  });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`Request failed for ${url}: ${res.status} ${text}`);
@@ -38,4 +49,3 @@ export function invalidateCache(prefix) {
 export function clearCache() {
   cache.clear();
 }
-

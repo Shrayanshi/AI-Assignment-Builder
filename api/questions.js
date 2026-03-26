@@ -1,4 +1,5 @@
 import { allAsync, runAsync, getAsync } from "../lib/db.js";
+import { requireAuth } from "../lib/authMiddleware.js";
 
 function normalizeRow(row) {
   if (row?.options_json) row.options = JSON.parse(row.options_json);
@@ -41,6 +42,9 @@ async function updatePaperTotalMarks(paperId) {
 }
 
 export default async function handler(req, res) {
+  const teacherId = await requireAuth(req, res);
+  if (teacherId === null) return;
+
   const url = new URL(req.url, "http://localhost");
   const id = url.searchParams.get("id");
   const assignmentId = url.searchParams.get("assignmentId");

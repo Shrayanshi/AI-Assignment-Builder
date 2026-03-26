@@ -3,8 +3,11 @@ import { HomePage } from "./pages/Home";
 import { CreateTypePage } from "./pages/CreateType";
 import { QuestionPaperSetup } from "./pages/QuestionPaperSetup";
 import QuestionBankApp from "./pages/QuestionBankApp";
+import { LoginPage } from "./pages/Login";
+import { SignupPage } from "./pages/Signup";
 import { ToastStack } from "./components/ui/Toast";
 import { fetchJson, invalidateCache } from "./lib/apiClient";
+import { AuthProvider, useAuth } from "./lib/AuthContext";
 
 const DEFAULT_VIEW = "home";
 
@@ -35,7 +38,21 @@ function getHashForView(view, openAssignmentId, openPaperId) {
   return "#/";
 }
 
-function App() {
+function authFetch(url, options = {}) {
+  const token = localStorage.getItem("auth_token");
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
+  });
+}
+
+function AppContent() {
+  const { user, logout, loading } = useAuth();
+  const [authView, setAuthView] = useState("login"); // "login" | "signup"
+
   const [view, setView] = useState(DEFAULT_VIEW);
   const [paperTemplate, setPaperTemplate] = useState(null);
   const [openAssignmentId, setOpenAssignmentId] = useState(null);
@@ -89,7 +106,6 @@ function App() {
         fetchJson("/api/papers", { cache: false }),
       ]);
 
-      // Build assignment docs from backend - using question_count and total_marks from list response
       const assignmentDocs = assignments.map((a) => ({
         id: `assignment-${a.id}`,
         kind: "assignment",
@@ -102,7 +118,6 @@ function App() {
         lastModified: a.updated_at,
       }));
 
-      // Build paper docs from backend - using question_count and total_marks from list response
       const paperDocs = papers.map((p) => ({
         id: `paper-${p.id}`,
         kind: "paper",
@@ -128,10 +143,9 @@ function App() {
   };
 
   useEffect(() => {
-    if (view === "home") reloadDocuments();
-  }, [view]);
+    if (user && view === "home") reloadDocuments();
+  }, [user, view]);
 
-  // When entering paper builder, always fetch latest paper so template shows saved values (no stale cache).
   useEffect(() => {
     if (view !== "paperBuilder" || !openPaperId) return;
     fetchJson(`/api/papers?id=${openPaperId}`, { cache: false })
@@ -184,14 +198,10 @@ function App() {
     if (!doc) return;
     try {
       if (doc.kind === "paper") {
-        await fetch(`/api/papers?id=${doc.paperId}`, {
-          method: "DELETE",
-        });
+        await authFetch(`/api/papers?id=${doc.paperId}`, { method: "DELETE" });
         pushToast("Question paper deleted", "info");
       } else if (doc.kind === "assignment") {
-        await fetch(`/api/assignments?id=${doc.assignmentId}`, {
-          method: "DELETE",
-        });
+        await authFetch(`/api/assignments?id=${doc.assignmentId}`, { method: "DELETE" });
         pushToast("Assignment deleted", "info");
       }
     } catch (err) {
@@ -202,6 +212,23 @@ function App() {
     reloadDocuments();
   };
 
+  // Show a loading spinner while verifying token
+  if (loading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f9fafb" }}>
+        <p style={{ color: "#6b7280", fontFamily: "'DM Sans', system-ui, sans-serif" }}>Loading...</p>
+      </div>
+    );
+  }
+
+  // Not authenticated — show login or signup
+  if (!user) {
+    if (authView === "signup") {
+      return <SignupPage onSwitchToLogin={() => setAuthView("login")} />;
+    }
+    return <LoginPage onSwitchToSignup={() => setAuthView("signup")} />;
+  }
+
   if (view === "paperSetup") {
     return (
       <>
@@ -211,7 +238,7 @@ function App() {
           onContinue={async (template) => {
             setBuilderOrigin("paperSetup");
             try {
-              const res = await fetch("/api/papers", {
+              const res = await authFetch("/api/papers", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -252,7 +279,7 @@ function App() {
           onPaperTemplateChange={(template) => setPaperTemplate(template)}
           onPaperTemplateSave={(template) => {
             if (!openPaperId || !template) return;
-            fetch(`/api/papers?id=${openPaperId}`, {
+            authFetch(`/api/papers?id=${openPaperId}`, {
               method: "PUT",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -312,7 +339,7 @@ function App() {
           }}
           onCreateAssignment={async () => {
             try {
-              const res = await fetch("/api/assignments", {
+              const res = await authFetch("/api/assignments", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ name: "Untitled Assignment" }),
@@ -335,10 +362,12 @@ function App() {
     );
   }
 
-  // Default: home page with backend-driven documents
+  // Default: home page
   return (
     <>
       <HomePage
+        user={user}
+        onLogout={logout}
         documents={documents}
         onCreateNew={() => {
           setOpenPaperId(null);
@@ -351,6 +380,14 @@ function App() {
       />
       <ToastStack toasts={toasts} />
     </>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 

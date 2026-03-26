@@ -4,6 +4,17 @@ import { AssignmentRow } from "../components/QuestionBank/AssignmentRow";
 import { QuestionCard } from "../components/QuestionBank/QuestionCard";
 import { AiQuestionGenerator } from "../components/QuestionBank/AiQuestionGenerator";
 import { fetchJson, invalidateCache } from "../lib/apiClient";
+
+function authFetch(url, options = {}) {
+  const token = localStorage.getItem("auth_token");
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
+  });
+}
 import { ToastStack } from "../components/ui/Toast";
 import { Button } from "../components/ui/Button";
 import { panelStyle, inputStyle } from "../components/QuestionBank/styles";
@@ -306,9 +317,9 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
     try {
       const base = isPaperMode ? `/api/questions?paperId=${targetId}` : `/api/questions?assignmentId=${targetId}`;
       if (already) {
-        await fetch(`${base}&questionId=${qid}`, { method: "DELETE" });
+        await authFetch(`${base}&questionId=${qid}`, { method: "DELETE" });
       } else {
-        await fetch(base, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ questionId: qid }) });
+        await authFetch(base, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ questionId: qid }) });
       }
     } catch (err) {
       console.error("Failed to sync question toggle", err);
@@ -333,7 +344,7 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
     setEditingTitle(false);
 
     try {
-      const res = await fetch("/api/assignments", {
+      const res = await authFetch("/api/assignments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: trimmedName }),
@@ -405,7 +416,7 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
 
     try {
       if (editorMode === "create" || !editorDraft.id) {
-        const res = await fetch("/api/questions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        const res = await authFetch("/api/questions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
         if (!res.ok) throw new Error("Failed to create question");
         const saved = await res.json();
         const id = String(saved.id);
@@ -414,7 +425,7 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
         if (activeAssignment) {
           updateAssignmentIds([...activeAssignment.questionIds, id]);
           const base = isPaperMode ? `/api/questions?paperId=${activeAssignment.id}` : `/api/questions?assignmentId=${activeAssignment.id}`;
-          await fetch(base, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ questionId: id }) }).catch(console.error);
+          await authFetch(base, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ questionId: id }) }).catch(console.error);
           // Invalidate cache for assignments/papers since total_marks changed
           invalidateCache("/api/assignments");
           invalidateCache("/api/papers");
@@ -422,7 +433,7 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
         setActiveQuestionId(id);
         pushToast("Question created", "success");
       } else {
-        const res = await fetch(`/api/questions?id=${editorDraft.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        const res = await authFetch(`/api/questions?id=${editorDraft.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
         if (!res.ok) throw new Error("Failed to update question");
         const saved = await res.json();
         const id = String(saved.id);
@@ -476,7 +487,7 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
     setAssignments(prev => prev.map(a => ({ ...a, questionIds: a.questionIds.filter(qid => qid !== id) })));
     if (activeQuestionId === id) setActiveQuestionId(null);
     try {
-      await fetch(`/api/questions?id=${id}`, { method: "DELETE" });
+      await authFetch(`/api/questions?id=${id}`, { method: "DELETE" });
       // Invalidate cache so next load gets fresh data
       invalidateCache("/api/questions");
       invalidateCache("/api/assignments");
@@ -609,7 +620,7 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
     order.splice(dropIndex, 0, moved);
     updateAssignmentIds(order);
     const url = isPaperMode ? `/api/questions?paperId=${activeAssignment.id}&reorder=1` : `/api/questions?assignmentId=${activeAssignment.id}&reorder=1`;
-    fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order }) }).catch(console.error);
+    authFetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order }) }).catch(console.error);
     setDraggingIndex(null); setDragOverIndex(null);
   }
 
@@ -815,9 +826,9 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
                           setAssignments(prev => prev.map(a => a.id === activeAssignmentId ? { ...a, name } : a));
                           if (activeAssignmentId) {
                             if (isPaperMode) {
-                              fetch(`/api/papers?id=${activeAssignmentId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: name }) }).catch(console.error);
+                              authFetch(`/api/papers?id=${activeAssignmentId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: name }) }).catch(console.error);
                             } else {
-                              fetch(`/api/assignments?id=${activeAssignmentId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }).catch(console.error);
+                              authFetch(`/api/assignments?id=${activeAssignmentId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }).catch(console.error);
                             }
                           }
                         }

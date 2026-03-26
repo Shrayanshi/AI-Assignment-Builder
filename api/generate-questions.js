@@ -1,5 +1,6 @@
 import { generateQuestionsWithGemini } from "../backend/server.js";
 import { pool } from "../lib/db.js";
+import { requireAuth } from "../lib/authMiddleware.js";
 
 function normalizeRow(row) {
   if (row?.options_json) row.options = JSON.parse(row.options_json);
@@ -10,6 +11,9 @@ function normalizeRow(row) {
 }
 
 export default async function handler(req, res) {
+  const teacherId = await requireAuth(req, res);
+  if (teacherId === null) return;
+
   if (req.method !== "POST") {
     res.setHeader("Allow", ["POST"]);
     return res.status(405).json({ error: "Method Not Allowed" });

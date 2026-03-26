@@ -1,4 +1,5 @@
 import { allAsync, runAsync, getAsync } from "../lib/db.js";
+import { requireAuth } from "../lib/authMiddleware.js";
 
 function normalizeQuestion(r) {
   if (r.options_json) r.options = JSON.parse(r.options_json);
@@ -11,6 +12,9 @@ function normalizeQuestion(r) {
 }
 
 export default async function handler(req, res) {
+  const teacherId = await requireAuth(req, res);
+  if (teacherId === null) return;
+
   const url = new URL(req.url, "http://localhost");
   const id = url.searchParams.get("id");
 
@@ -19,8 +23,8 @@ export default async function handler(req, res) {
     if (id) {
       try {
         const paper = await getAsync(
-          `SELECT * FROM question_papers WHERE id = $1`,
-          [id],
+          `SELECT * FROM question_papers WHERE id = $1 AND teacher_id = $2`,
+          [id, teacherId],
         );
         if (!paper) return res.status(404).json({ error: "Paper not found" });
         const questions = await allAsync(
@@ -59,8 +63,10 @@ export default async function handler(req, res) {
          FROM question_papers qp
          LEFT JOIN question_paper_questions pq ON pq.paper_id::text = qp.id::text
          LEFT JOIN questions q ON q.id::text = pq.question_id::text
+         WHERE qp.teacher_id = $1
          GROUP BY qp.id
          ORDER BY qp.id DESC`,
+        [teacherId],
       );
       return res.status(200).json(rows);
     } catch (err) {
@@ -90,9 +96,9 @@ export default async function handler(req, res) {
       const now = new Date().toISOString();
       const insertSql = `
         INSERT INTO question_papers
-          (title, school_name, school_address, grade, subject, exam_type, duration, total_marks, academic_year, exam_date, created_at, updated_at)
+          (title, school_name, school_address, grade, subject, exam_type, duration, total_marks, academic_year, exam_date, teacher_id, created_at, updated_at)
         VALUES
-          ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         RETURNING *
       `;
       const { rows } = await runAsync(insertSql, [
@@ -106,6 +112,7 @@ export default async function handler(req, res) {
         totalMarks != null ? Number(totalMarks) : null,
         academicYear || null,
         examDate || null,
+        teacherId,
         now,
         now,
       ]);
@@ -120,8 +127,8 @@ export default async function handler(req, res) {
   if (req.method === "PUT" && id) {
     try {
       const existing = await getAsync(
-        `SELECT * FROM question_papers WHERE id = $1`,
-        [id],
+        `SELECT * FROM question_papers WHERE id = $1 AND teacher_id = $2`,
+        [id, teacherId],
       );
       if (!existing)
         return res.status(404).json({ error: "Paper not found" });
@@ -179,6 +186,12 @@ export default async function handler(req, res) {
   // DELETE /api/papers?id=123
   if (req.method === "DELETE" && id) {
     try {
+      const existing = await getAsync(
+        `SELECT id FROM question_papers WHERE id = $1 AND teacher_id = $2`,
+        [id, teacherId],
+      );
+      if (!existing)
+        return res.status(404).json({ error: "Paper not found" });
       await runAsync(`DELETE FROM question_papers WHERE id = $1`, [id]);
       return res.status(200).json({ ok: true });
     } catch (err) {
@@ -190,4 +203,3 @@ export default async function handler(req, res) {
   res.setHeader("Allow", ["GET", "POST", "PUT", "DELETE"]);
   return res.status(405).json({ error: "Method Not Allowed" });
 }
-

@@ -28,6 +28,8 @@ export function HomePage({
   onEditDocument,
   onDeleteDocument,
   loading = false,
+  user = null,
+  onLogout,
 }) {
   const [tab, setTab] = useState("papers");
   const [filterOpen, setFilterOpen] = useState(false);
@@ -131,11 +133,51 @@ export function HomePage({
               Create and manage your question papers and assignments.
             </p>
           </div>
-          {onCreateNew && (
-            <Button onClick={onCreateNew}>
-              + Create New
-            </Button>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {user && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: "50%",
+                  background: "#2563eb",
+                  color: "#fff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  flexShrink: 0,
+                }}>
+                  {user.name.charAt(0).toUpperCase()}
+                </div>
+                <span style={{ fontSize: 13, color: "#374151", fontWeight: 500 }}>{user.name}</span>
+              </div>
+            )}
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                style={{
+                  padding: "6px 14px",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: "#6b7280",
+                  background: "transparent",
+                  border: "1px solid #d1d5db",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                Sign Out
+              </button>
+            )}
+            {onCreateNew && (
+              <Button onClick={onCreateNew}>
+                + Create New
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
