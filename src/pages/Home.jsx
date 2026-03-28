@@ -4,6 +4,32 @@ import { Card } from "../components/ui/Card";
 
 const empty = [];
 
+const skStyle = `
+  @keyframes sk-pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+  .sk-home { background:#e5e7eb; border-radius:6px; animation:sk-pulse 1.5s ease-in-out infinite; }
+`;
+
+function SkeletonCard() {
+  return (
+    <div style={{ background:"#fff", borderRadius:12, border:"1px solid #e5e7eb", padding:16, display:"flex", justifyContent:"space-between", gap:12 }}>
+      <div style={{ flex:1 }}>
+        <div className="sk-home" style={{ height:15, width:"50%", marginBottom:8 }} />
+        <div className="sk-home" style={{ height:11, width:"28%", marginBottom:14 }} />
+        <div style={{ display:"flex", gap:6, marginBottom:10 }}>
+          <div className="sk-home" style={{ height:20, width:60, borderRadius:999 }} />
+          <div className="sk-home" style={{ height:20, width:80, borderRadius:999 }} />
+          <div className="sk-home" style={{ height:20, width:56, borderRadius:999 }} />
+        </div>
+        <div className="sk-home" style={{ height:10, width:"42%", borderRadius:6 }} />
+      </div>
+      <div style={{ display:"flex", flexDirection:"column", gap:6, alignItems:"flex-end" }}>
+        <div className="sk-home" style={{ height:34, width:58, borderRadius:8 }} />
+        <div className="sk-home" style={{ height:30, width:58, borderRadius:8 }} />
+      </div>
+    </div>
+  );
+}
+
 function FilterIcon({ active }) {
   return (
     <svg
@@ -112,6 +138,7 @@ export function HomePage({
 
   return (
     <div style={{ minHeight: "100vh", background: "#f9fafb" }}>
+      <style>{skStyle}</style>
       <div style={{ background: "#ffffff", borderBottom: "1px solid #e5e7eb" }}>
         <div
           className="home-header"
@@ -172,191 +199,195 @@ export function HomePage({
                 Sign Out
               </button>
             )}
-            {onCreateNew && (
-              <Button onClick={onCreateNew}>
-                + Create New
-              </Button>
-            )}
+
           </div>
         </div>
       </div>
 
       <div className="home-content" style={{ maxWidth: 1120, margin: "0 auto", padding: "20px 24px 32px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
-          <div
-            style={{
-              display: "inline-flex",
-              borderRadius: 999,
-              border: "1px solid #e5e7eb",
-              padding: 3,
-              background: "#f3f4f6",
-            }}
-          >
-            <Button
-              variant="ghost"
-              onClick={() => setTab("papers")}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div
               style={{
-                ...tabStyle(tab === "papers"),
-                minHeight: "auto",
-                padding: "8px 16px",
-                background: tab === "papers" ? "#ffffff" : "transparent",
-                border: "none",
+                display: "inline-flex",
+                borderRadius: 999,
+                border: "1px solid #e5e7eb",
+                padding: 3,
+                background: "#f3f4f6",
               }}
             >
-              Question Papers ({papers.length})
-            </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setTab("papers")}
+                style={{
+                  ...tabStyle(tab === "papers"),
+                  minHeight: "auto",
+                  padding: "8px 16px",
+                  background: tab === "papers" ? "#ffffff" : "transparent",
+                  border: "none",
+                }}
+              >
+                Question Papers ({papers.length})
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setTab("assignments")}
+                style={{
+                  ...tabStyle(tab === "assignments"),
+                  minHeight: "auto",
+                  padding: "8px 16px",
+                  background: tab === "assignments" ? "#ffffff" : "transparent",
+                  border: "none",
+                }}
+              >
+                Assignments ({assignments.length})
+              </Button>
+            </div>
             <Button
-              variant="ghost"
-              onClick={() => setTab("assignments")}
+              variant="secondary"
+              onClick={() => setFilterOpen((o) => !o)}
+              title="Filter by available fields"
               style={{
-                ...tabStyle(tab === "assignments"),
-                minHeight: "auto",
-                padding: "8px 16px",
-                background: tab === "assignments" ? "#ffffff" : "transparent",
-                border: "none",
+                padding: "8px 14px",
+                background: hasActiveFilter ? "#eff6ff" : undefined,
+                color: hasActiveFilter ? "#2563eb" : undefined,
+                borderColor: hasActiveFilter ? "#93c5fd" : undefined,
               }}
             >
-              Assignments ({assignments.length})
+              <FilterIcon active={hasActiveFilter} />
+              Filter
             </Button>
+            {filterOpen && (
+              <Card style={{ padding: 12, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
+                {tab === "papers" && (
+                  <>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: "#6b7280" }}>Subject</span>
+                      <select
+                        value={filterPaperSubject}
+                        onChange={(e) => setFilterPaperSubject(e.target.value)}
+                        style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, minWidth: 100 }}
+                      >
+                        <option value="">All</option>
+                        {paperFields.subjects.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: "#6b7280" }}>Grade</span>
+                      <select
+                        value={filterPaperGrade}
+                        onChange={(e) => setFilterPaperGrade(e.target.value)}
+                        style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, minWidth: 80 }}
+                      >
+                        <option value="">All</option>
+                        {paperFields.grades.map((g) => (
+                          <option key={g} value={g}>{g}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: "#6b7280" }}>Exam type</span>
+                      <select
+                        value={filterPaperExamType}
+                        onChange={(e) => setFilterPaperExamType(e.target.value)}
+                        style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, minWidth: 100 }}
+                      >
+                        <option value="">All</option>
+                        {paperFields.examTypes.map((et) => (
+                          <option key={et} value={et}>{et}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: "#6b7280" }}>Marks</span>
+                      <select
+                        value={filterPaperMarks}
+                        onChange={(e) => setFilterPaperMarks(e.target.value)}
+                        style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, minWidth: 80 }}
+                      >
+                        <option value="">All</option>
+                        {paperFields.marks.map((m) => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: "#6b7280" }}>No. of questions</span>
+                      <select
+                        value={filterPaperQuestionCount}
+                        onChange={(e) => setFilterPaperQuestionCount(e.target.value)}
+                        style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, minWidth: 80 }}
+                      >
+                        <option value="">All</option>
+                        {paperFields.questionCounts.map((n) => (
+                          <option key={n} value={n}>{n}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </>
+                )}
+                {tab === "assignments" && (
+                  <>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: "#6b7280" }}>Subject</span>
+                      <select
+                        value={filterAssignSubject}
+                        onChange={(e) => setFilterAssignSubject(e.target.value)}
+                        style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, minWidth: 100 }}
+                      >
+                        <option value="">All</option>
+                        {assignFields.subjects.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: "#6b7280" }}>Marks</span>
+                      <select
+                        value={filterAssignMarks}
+                        onChange={(e) => setFilterAssignMarks(e.target.value)}
+                        style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, minWidth: 80 }}
+                      >
+                        <option value="">All</option>
+                        {assignFields.marks.map((m) => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: "#6b7280" }}>No. of questions</span>
+                      <select
+                        value={filterAssignQuestionCount}
+                        onChange={(e) => setFilterAssignQuestionCount(e.target.value)}
+                        style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, minWidth: 80 }}
+                      >
+                        <option value="">All</option>
+                        {assignFields.questionCounts.map((n) => (
+                          <option key={n} value={n}>{n}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </>
+                )}
+              </Card>
+            )}
           </div>
-          <Button
-            variant="secondary"
-            onClick={() => setFilterOpen((o) => !o)}
-            title="Filter by available fields"
-            style={{
-              padding: "8px 14px",
-              background: hasActiveFilter ? "#eff6ff" : undefined,
-              color: hasActiveFilter ? "#2563eb" : undefined,
-              borderColor: hasActiveFilter ? "#93c5fd" : undefined,
-            }}
-          >
-            <FilterIcon active={hasActiveFilter} />
-            Filter
-          </Button>
-          {filterOpen && (
-            <Card style={{ padding: 12, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
-              {tab === "papers" && (
-                <>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: "#6b7280" }}>Subject</span>
-                    <select
-                      value={filterPaperSubject}
-                      onChange={(e) => setFilterPaperSubject(e.target.value)}
-                      style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, minWidth: 100 }}
-                    >
-                      <option value="">All</option>
-                      {paperFields.subjects.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: "#6b7280" }}>Grade</span>
-                    <select
-                      value={filterPaperGrade}
-                      onChange={(e) => setFilterPaperGrade(e.target.value)}
-                      style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, minWidth: 80 }}
-                    >
-                      <option value="">All</option>
-                      {paperFields.grades.map((g) => (
-                        <option key={g} value={g}>{g}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: "#6b7280" }}>Exam type</span>
-                    <select
-                      value={filterPaperExamType}
-                      onChange={(e) => setFilterPaperExamType(e.target.value)}
-                      style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, minWidth: 100 }}
-                    >
-                      <option value="">All</option>
-                      {paperFields.examTypes.map((et) => (
-                        <option key={et} value={et}>{et}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: "#6b7280" }}>Marks</span>
-                    <select
-                      value={filterPaperMarks}
-                      onChange={(e) => setFilterPaperMarks(e.target.value)}
-                      style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, minWidth: 80 }}
-                    >
-                      <option value="">All</option>
-                      {paperFields.marks.map((m) => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: "#6b7280" }}>No. of questions</span>
-                    <select
-                      value={filterPaperQuestionCount}
-                      onChange={(e) => setFilterPaperQuestionCount(e.target.value)}
-                      style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, minWidth: 80 }}
-                    >
-                      <option value="">All</option>
-                      {paperFields.questionCounts.map((n) => (
-                        <option key={n} value={n}>{n}</option>
-                      ))}
-                    </select>
-                  </label>
-                </>
-              )}
-              {tab === "assignments" && (
-                <>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: "#6b7280" }}>Subject</span>
-                    <select
-                      value={filterAssignSubject}
-                      onChange={(e) => setFilterAssignSubject(e.target.value)}
-                      style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, minWidth: 100 }}
-                    >
-                      <option value="">All</option>
-                      {assignFields.subjects.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: "#6b7280" }}>Marks</span>
-                    <select
-                      value={filterAssignMarks}
-                      onChange={(e) => setFilterAssignMarks(e.target.value)}
-                      style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, minWidth: 80 }}
-                    >
-                      <option value="">All</option>
-                      {assignFields.marks.map((m) => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: "#6b7280" }}>No. of questions</span>
-                    <select
-                      value={filterAssignQuestionCount}
-                      onChange={(e) => setFilterAssignQuestionCount(e.target.value)}
-                      style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12, minWidth: 80 }}
-                    >
-                      <option value="">All</option>
-                      {assignFields.questionCounts.map((n) => (
-                        <option key={n} value={n}>{n}</option>
-                      ))}
-                    </select>
-                  </label>
-                </>
-              )}
-            </Card>
+
+          {onCreateNew && (
+            <Button onClick={onCreateNew}>
+              + Create New
+            </Button>
           )}
         </div>
 
         {tab === "papers" && (
           <>
             {loading ? (
-              <Card style={{ padding: 24, textAlign: "center" }}>
-                <p style={{ fontSize: 13, color: "#6b7280" }}>Loading papers…</p>
-              </Card>
+              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                {[0,1,2].map(i => <SkeletonCard key={i} />)}
+              </div>
             ) : filteredPapers.length === 0 ? (
               <Card style={{ padding: 32, textAlign: "center" }}>
                 <h3 style={{ fontSize: 16, fontWeight: 500, color: "#4b5563", marginBottom: 8 }}>
@@ -415,9 +446,9 @@ export function HomePage({
         {tab === "assignments" && (
           <>
             {loading ? (
-              <Card style={{ padding: 24, textAlign: "center" }}>
-                <p style={{ fontSize: 13, color: "#6b7280" }}>Loading assignments…</p>
-              </Card>
+              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                {[0,1,2].map(i => <SkeletonCard key={i} />)}
+              </div>
             ) : filteredAssignments.length === 0 ? (
               <Card style={{ padding: 32, textAlign: "center" }}>
                 <h3 style={{ fontSize: 16, fontWeight: 500, color: "#4b5563", marginBottom: 8 }}>

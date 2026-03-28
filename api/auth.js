@@ -1,33 +1,17 @@
-import { query, getAsync, runAsync } from "../lib/db.js";
+import { getAsync, runAsync } from "../lib/db.js";
+import { ensureSchema } from "../lib/schema.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
 const JWT_SECRET = process.env.JWT_SECRET || "fallback-dev-secret-change-in-production";
 
-async function ensureSchema() {
-  await query(`
-    CREATE TABLE IF NOT EXISTS users (
-      id SERIAL PRIMARY KEY,
-      name TEXT,
-      email TEXT UNIQUE,
-      password_hash TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `);
-  // Patch columns in case the table was created with a different schema
-  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT`);
-  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT`);
-  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT`);
-  await query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()`);
-  // If an old "password" column exists with NOT NULL, drop the constraint so it doesn't block inserts
-  await query(`ALTER TABLE users ALTER COLUMN password DROP NOT NULL`).catch(() => {});
-  await query(`ALTER TABLE assignments ADD COLUMN IF NOT EXISTS teacher_id INTEGER REFERENCES users(id)`);
-  await query(`ALTER TABLE question_papers ADD COLUMN IF NOT EXISTS teacher_id INTEGER REFERENCES users(id)`);
-}
+// Kick off schema setup the moment this module is imported so it's ready
+// by the time the first real request arrives.
+ensureSchema().catch(console.error);
 
 export default async function handler(req, res) {
   try {
-    await ensureSchema();
+    await ensureSchema(); // resolves instantly on all calls after the first
   } catch (err) {
     console.error("Schema migration error:", err);
     return res.status(500).json({ error: "Database setup failed" });

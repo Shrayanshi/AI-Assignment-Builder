@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { HomePage } from "./pages/Home";
 import { CreateTypePage } from "./pages/CreateType";
 import { QuestionPaperSetup } from "./pages/QuestionPaperSetup";
+import { AssignmentSetup } from "./pages/AssignmentSetup";
 import QuestionBankApp from "./pages/QuestionBankApp";
 import { LoginPage } from "./pages/Login";
 import { SignupPage } from "./pages/Signup";
@@ -60,6 +61,10 @@ function AppContent() {
   const [documents, setDocuments] = useState([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [builderOrigin, setBuilderOrigin] = useState("home");
+  const [creatingAssignment, setCreatingAssignment] = useState(false);
+  const [creatingPaper, setCreatingPaper] = useState(false);
+  const [openGrade, setOpenGrade] = useState(null);
+  const [openSubject, setOpenSubject] = useState(null);
   const [toasts, setToasts] = useState([]);
 
   useEffect(() => {
@@ -112,6 +117,7 @@ function AppContent() {
         assignmentId: String(a.id),
         title: a.name,
         subject: a.subject || "",
+        grade: a.grade || "",
         questionCount: a.question_count || 0,
         totalMarks: a.total_marks || 0,
         createdAt: a.created_at,
@@ -144,7 +150,9 @@ function AppContent() {
 
   useEffect(() => {
     if (user && view === "home") reloadDocuments();
-  }, [user, view]);
+  // user?.id is stable even when the user object reference changes (e.g. StrictMode re-verify)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, view]);
 
   useEffect(() => {
     if (view !== "paperBuilder" || !openPaperId) return;
@@ -189,6 +197,8 @@ function AppContent() {
       setPaperTemplate(null);
       setOpenPaperId(null);
       setOpenAssignmentId(doc.assignmentId);
+      setOpenGrade(doc.grade || null);
+      setOpenSubject(doc.subject || null);
       setView("assignmentBuilder");
     }
   };
@@ -196,20 +206,24 @@ function AppContent() {
   const handleDeleteDocument = async (id) => {
     const doc = documents.find((d) => d.id === id);
     if (!doc) return;
+    // Optimistically remove from local state immediately — no reload needed
+    setDocuments((prev) => prev.filter((d) => d.id !== id));
     try {
       if (doc.kind === "paper") {
         await authFetch(`/api/papers?id=${doc.paperId}`, { method: "DELETE" });
+        invalidateCache("/api/papers");
         pushToast("Question paper deleted", "info");
       } else if (doc.kind === "assignment") {
         await authFetch(`/api/assignments?id=${doc.assignmentId}`, { method: "DELETE" });
+        invalidateCache("/api/assignments");
         pushToast("Assignment deleted", "info");
       }
     } catch (err) {
       console.error("Failed to delete document from backend", err);
+      // Restore the document in state if the server call failed
+      setDocuments((prev) => [...prev, doc].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+      pushToast("Failed to delete. Please try again.", "error");
     }
-    invalidateCache("/api/assignments");
-    invalidateCache("/api/papers");
-    reloadDocuments();
   };
 
   // Show a loading spinner while verifying token
@@ -234,9 +248,11 @@ function AppContent() {
       <>
         <QuestionPaperSetup
           initialTemplate={paperTemplate}
+          creating={creatingPaper}
           onBack={() => setView("type")}
           onContinue={async (template) => {
             setBuilderOrigin("paperSetup");
+            setCreatingPaper(true);
             try {
               const res = await authFetch("/api/papers", {
                 method: "POST",
@@ -263,6 +279,8 @@ function AppContent() {
             } catch (err) {
               console.error(err);
               alert("Failed to create question paper on server.");
+            } finally {
+              setCreatingPaper(false);
             }
           }}
         />
@@ -276,6 +294,8 @@ function AppContent() {
       <>
         <QuestionBankApp
           paperTemplate={paperTemplate}
+          openGrade={paperTemplate?.grade || null}
+          openSubject={paperTemplate?.subject || null}
           onPaperTemplateChange={(template) => setPaperTemplate(template)}
           onPaperTemplateSave={(template) => {
             if (!openPaperId || !template) return;
@@ -319,7 +339,45 @@ function AppContent() {
           onBack={() => setView(builderOrigin)}
           openAssignmentId={openAssignmentId}
           openPaperId={null}
+          openGrade={openGrade}
+          openSubject={openSubject}
           onGoHome={() => setView("home")}
+        />
+        <ToastStack toasts={toasts} />
+      </>
+    );
+  }
+
+  if (view === "assignmentSetup") {
+    return (
+      <>
+        <AssignmentSetup
+          creating={creatingAssignment}
+          onBack={() => setView("type")}
+          onContinue={async ({ grade, subject }) => {
+            setCreatingAssignment(true);
+            try {
+              const res = await authFetch("/api/assignments", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: "Untitled Assignment", grade, subject }),
+              });
+              if (!res.ok) throw new Error("Failed to create assignment");
+              const a = await res.json();
+              setPaperTemplate(null);
+              setOpenPaperId(null);
+              setOpenAssignmentId(String(a.id));
+              setOpenGrade(grade || null);
+              setOpenSubject(subject || null);
+              setBuilderOrigin("assignmentSetup");
+              setView("assignmentBuilder");
+            } catch (err) {
+              console.error(err);
+              pushToast("Failed to create assignment on server.", "error");
+            } finally {
+              setCreatingAssignment(false);
+            }
+          }}
         />
         <ToastStack toasts={toasts} />
       </>
@@ -337,24 +395,9 @@ function AppContent() {
             setOpenPaperId(null);
             setView("paperSetup");
           }}
-          onCreateAssignment={async () => {
-            try {
-              const res = await authFetch("/api/assignments", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name: "Untitled Assignment" }),
-              });
-              if (!res.ok) throw new Error("Failed to create assignment");
-              const a = await res.json();
-              setPaperTemplate(null);
-              setOpenPaperId(null);
-              setOpenAssignmentId(String(a.id));
-              setBuilderOrigin("type");
-              setView("assignmentBuilder");
-            } catch (err) {
-              console.error(err);
-              alert("Failed to create assignment on server.");
-            }
+          onCreateAssignment={() => {
+            setBuilderOrigin("type");
+            setView("assignmentSetup");
           }}
         />
         <ToastStack toasts={toasts} />

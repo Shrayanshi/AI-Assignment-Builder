@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "../components/ui/Button";
 import { Card, CardHeader, CardTitle, CardDescription } from "../components/ui/Card";
 
-export function QuestionPaperSetup({ onBack, onContinue, initialTemplate }) {
+export function QuestionPaperSetup({ onBack, onContinue, initialTemplate, creating = false }) {
   const [formData, setFormData] = useState(
     initialTemplate || {
       schoolName: "",
@@ -220,8 +220,8 @@ export function QuestionPaperSetup({ onBack, onContinue, initialTemplate }) {
               </Button>
             )}
             <div style={{ flex: 1, textAlign: "right" }}>
-              <Button onClick={handleContinue} disabled={!isFormValid}>
-                Continue to Add Questions →
+              <Button onClick={handleContinue} disabled={!isFormValid || creating} style={{ opacity: creating ? 0.7 : 1 }}>
+                {creating ? "Creating…" : "Continue to Add Questions →"}
               </Button>
             </div>
           </div>

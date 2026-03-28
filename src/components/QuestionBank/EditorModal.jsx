@@ -2,6 +2,12 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { inputStyle } from "./styles";
 import { Button } from "../ui/Button";
 
+const GRADES = [
+  "Class 1", "Class 2", "Class 3", "Class 4", "Class 5",
+  "Class 6", "Class 7", "Class 8", "Class 9", "Class 10",
+  "Class 11", "Class 12",
+];
+
 // ─── Rich Text Toolbar ────────────────────────────────────────────────────────
 
 function RichToolbar({ onCommand, onImageInsert, onLinkInsert }) {
@@ -347,10 +353,30 @@ export function EditorModal({ mode, draft, onChangeDraft, onSave, onCancel }) {
               {el}
             </label>
           ))}
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: "1/-1" }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: "#6b7280" }}>Subject</span>
-            <input type="text" value={draft.subject ?? ""} placeholder="e.g. Mathematics, Science"
-              onChange={e => onChangeDraft("subject", e.target.value)} style={inputStyle} />
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#6b7280" }}>
+              Subject <span style={{ color: "#ef4444" }}>*</span>
+            </span>
+            <input
+              type="text"
+              value={draft.subject ?? ""}
+              placeholder="e.g. Mathematics"
+              onChange={e => onChangeDraft("subject", e.target.value)}
+              style={{ ...inputStyle, borderColor: !draft.subject?.trim() ? "#fca5a5" : undefined }}
+            />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "#6b7280" }}>
+              Grade <span style={{ color: "#ef4444" }}>*</span>
+            </span>
+            <select
+              value={draft.grade ?? ""}
+              onChange={e => onChangeDraft("grade", e.target.value)}
+              style={{ ...inputStyle, borderColor: !draft.grade ? "#fca5a5" : undefined }}
+            >
+              <option value="">Select class…</option>
+              {GRADES.map(g => <option key={g} value={g}>{g}</option>)}
+            </select>
           </label>
         </div>
 

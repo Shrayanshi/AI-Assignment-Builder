@@ -24,9 +24,13 @@ export function AiQuestionGenerator({ onQuestionsGenerated }) {
     setIsLoading(true);
 
     try {
+      const token = localStorage.getItem("auth_token");
       const res = await fetch("/api/generate-questions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           grade: Number(grade),
           subject,

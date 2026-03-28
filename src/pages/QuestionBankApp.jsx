@@ -4,6 +4,9 @@ import { AssignmentRow } from "../components/QuestionBank/AssignmentRow";
 import { QuestionCard } from "../components/QuestionBank/QuestionCard";
 import { AiQuestionGenerator } from "../components/QuestionBank/AiQuestionGenerator";
 import { fetchJson, invalidateCache } from "../lib/apiClient";
+import { ToastStack } from "../components/ui/Toast";
+import { Button } from "../components/ui/Button";
+import { panelStyle, inputStyle } from "../components/QuestionBank/styles";
 
 function authFetch(url, options = {}) {
   const token = localStorage.getItem("auth_token");
@@ -15,9 +18,6 @@ function authFetch(url, options = {}) {
     },
   });
 }
-import { ToastStack } from "../components/ui/Toast";
-import { Button } from "../components/ui/Button";
-import { panelStyle, inputStyle } from "../components/QuestionBank/styles";
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -125,7 +125,7 @@ function loadInitialState() {
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 
-export default function App({ paperTemplate, onPaperTemplateChange, onPaperTemplateSave, onBack, openAssignmentId, openPaperId, onCreateDocument, onGoHome }) {
+export default function App({ paperTemplate, onPaperTemplateChange, onPaperTemplateSave, onBack, openAssignmentId, openPaperId, openGrade, openSubject, onCreateDocument, onGoHome }) {
   const isPaperMode = Boolean(openPaperId);
   const initial = loadInitialState();
 
@@ -160,6 +160,8 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
   }, [paperTemplate]);
   // Controls whether the paper header template editor is expanded
   const [headerExpanded, setHeaderExpanded] = useState(false);
+  // true while the initial backend fetch is in-flight; skeletons shown during this time
+  const [loadingBank, setLoadingBank] = useState(!!(openAssignmentId || openPaperId));
 
   function pushToast(message, variant = "info") {
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -176,12 +178,28 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
       try {
         // Always fetch all questions in parallel with assignments/paper
         if (openPaperId) {
-          const [qs, paper] = await Promise.all([
-            fetchJson("/api/questions", { cache: false }),
-            fetchJson(`/api/papers?id=${openPaperId}`, { cache: false }),
-          ]);
-          const normalizedQs = qs.map(q => ({ ...q, id: String(q.id), richText: q.text }));
-          setQuestions(normalizedQs);
+          const paper = await fetchJson(`/api/papers?id=${openPaperId}`, { cache: false });
+
+          // Use the paper's grade/subject (may differ from openGrade/openSubject props
+          // if the template hasn't loaded yet) to filter the question bank.
+          const pGrade   = paper.grade   || openGrade;
+          const pSubject = paper.subject || openSubject;
+          const qParams  = new URLSearchParams();
+          if (pGrade)   qParams.set("grade",   pGrade);
+          if (pSubject) qParams.set("subject", pSubject);
+          const qUrl = `/api/questions${qParams.toString() ? `?${qParams}` : ""}`;
+
+          const qs = await fetchJson(qUrl, { cache: false });
+
+          // Merge bank questions + already-assigned paper questions (same logic as assignments)
+          const normalize = q => ({ ...q, id: String(q.id), richText: q.text });
+          const bankQs   = qs.map(normalize);
+          const bankIds  = new Set(bankQs.map(q => q.id));
+          const assignedOnly = (paper.questions || [])
+            .map(normalize)
+            .filter(q => !bankIds.has(q.id));
+          setQuestions([...bankQs, ...assignedOnly]);
+
           const qIds = (paper.questions || []).map(q => String(q.id));
           setAssignments([{ id: String(paper.id), name: paper.title || "Question Paper", questionIds: qIds }]);
           setActiveAssignmentId(String(paper.id));
@@ -189,14 +207,30 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
         }
 
         if (openAssignmentId && !justCreatedRef.current) {
-          // Fetch questions + assignment list + active assignment detail in parallel
+          // Build question filter from grade/subject — only load relevant questions
+          const qParams = new URLSearchParams();
+          if (openGrade)   qParams.set("grade",   openGrade);
+          if (openSubject) qParams.set("subject", openSubject);
+          const qUrl = `/api/questions${qParams.toString() ? `?${qParams}` : ""}`;
+
+          // Fetch filtered questions + assignment list + active assignment detail in parallel
           const [qs, allAssignments, activeDetail] = await Promise.all([
-            fetchJson("/api/questions", { cache: false }),
+            fetchJson(qUrl, { cache: false }),
             fetchJson("/api/assignments", { cache: false }),
             fetchJson(`/api/assignments?id=${openAssignmentId}`, { cache: false }),
           ]);
-          const normalizedQs = qs.map(q => ({ ...q, id: String(q.id), richText: q.text }));
-          setQuestions(normalizedQs);
+
+          // The grade/subject filter may return [] when no questions exist for that
+          // combination yet — but the assignment may already have questions attached
+          // (loaded via activeDetail.questions). Merge both so the left panel can
+          // always render assigned questions even when the bank filter returns nothing.
+          const normalize = q => ({ ...q, id: String(q.id), richText: q.text });
+          const bankQs = qs.map(normalize);
+          const bankIds = new Set(bankQs.map(q => q.id));
+          const assignedOnly = (activeDetail.questions || [])
+            .map(normalize)
+            .filter(q => !bankIds.has(q.id));
+          setQuestions([...bankQs, ...assignedOnly]);
 
           // Build the list, populating questionIds for the active assignment right away
           const activeQIds = (activeDetail.questions || []).map(q => String(q.id));
@@ -235,11 +269,13 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
         }
       } catch (err) {
         console.error("Failed to load from backend", err);
+      } finally {
+        setLoadingBank(false);
       }
     }
     loadFromBackend();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openPaperId, openAssignmentId]);
+  }, [openPaperId, openAssignmentId, openGrade, openSubject]);
 
   // ── Lazy-load questions when switching to an assignment that hasn't been loaded ──
   useEffect(() => {
@@ -281,13 +317,17 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
   }), [questions]);
 
   const filteredQuestions = useMemo(() => questions.filter(q => {
+    // Hide questions with an explicitly different grade/subject from the bank.
+    // Questions with no grade/subject set (legacy) are still shown.
+    if (openGrade   && q.grade   && q.grade   !== openGrade)   return false;
+    if (openSubject && q.subject && q.subject !== openSubject) return false;
     if (search.trim() && !q.text?.toLowerCase().includes(search.trim().toLowerCase())) return false;
     if (filterType && q.type !== filterType) return false;
     if (filterDifficulty !== "" && (q.difficulty == null || Number(q.difficulty) !== Number(filterDifficulty))) return false;
     if (filterTopic && q.topic !== filterTopic) return false;
     if (filterSubject && q.subject !== filterSubject) return false;
     return true;
-  }), [questions, search, filterType, filterDifficulty, filterTopic, filterSubject]);
+  }), [questions, openGrade, openSubject, search, filterType, filterDifficulty, filterTopic, filterSubject]);
 
   const hasBankFilter = !!(filterType || filterDifficulty !== "" || filterTopic || filterSubject);
 
@@ -380,7 +420,7 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
   function openEditor(mode, question) {
     setEditorDraft(question
       ? { ...question, richText: question.richText ?? question.text ?? "", options: question.options ?? [], correctIndex: question.correctIndex ?? null }
-      : { id: null, type: "MCQ", marks: 4, difficulty: 3, topic: "", subject: "", text: "", richText: "", options: ["", ""], correctIndex: null }
+      : { id: null, type: "MCQ", marks: 4, difficulty: 3, topic: "", subject: openSubject || "", grade: openGrade || "", text: "", richText: "", options: ["", ""], correctIndex: null }
     );
     setEditorMode(mode);
   }
@@ -409,6 +449,7 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
       difficulty: finalDraft.difficulty,
       topic: finalDraft.topic,
       subject: finalDraft.subject,
+      grade: finalDraft.grade || openGrade || null,
       text: finalDraft.richText || finalDraft.text,
       options: finalDraft.options,
       correctIndex: finalDraft.correctIndex,
@@ -634,6 +675,8 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
         * { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
         select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236b7280'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; padding-right: 24px !important; }
         @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes sk-pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+        .sk { background:#e2e8f0; border-radius:6px; animation:sk-pulse 1.5s ease-in-out infinite; }
         @media (max-width: 768px) {
           body { height: auto !important; overflow: auto !important; }
         }
@@ -662,9 +705,21 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
                 <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#0f172a", letterSpacing: "-0.02em" }}>
                   Question Bank <span style={{ color: "#6366f1" }}>&</span> Assignment Builder
                 </h1>
-                <p style={{ margin: "6px 0 0", fontSize: 13, color: "#64748b" }}>
-                  Curate assignments by reusing questions from a global bank. Drag to reorder and auto-save to your browser.
-                </p>
+                {(openGrade || openSubject) ? (
+                  <p style={{ margin: "6px 0 0", fontSize: 13, color: "#64748b", display: "flex", alignItems: "center", gap: 6 }}>
+                    {openGrade && (
+                      <span style={{ background: "#eef2ff", color: "#4f46e5", borderRadius: 6, padding: "2px 8px", fontWeight: 600, fontSize: 12 }}>{openGrade}</span>
+                    )}
+                    {openSubject && (
+                      <span style={{ background: "#f0fdf4", color: "#16a34a", borderRadius: 6, padding: "2px 8px", fontWeight: 600, fontSize: 12 }}>{openSubject}</span>
+                    )}
+                    <span style={{ color: "#94a3b8" }}>· questions filtered to match this assignment</span>
+                  </p>
+                ) : (
+                  <p style={{ margin: "6px 0 0", fontSize: 13, color: "#64748b" }}>
+                    Curate assignments by reusing questions from a global bank. Drag to reorder and auto-save to your browser.
+                  </p>
+                )}
               </div>
             </div>
             <div className="qb-header-badge" style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 14px", borderRadius: 999, background: "linear-gradient(135deg, #eef2ff, #f5f3ff)", border: "1px solid #c7d2fe", flexShrink: 0 }}>
@@ -855,7 +910,17 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
               </div>
 
               <div style={{ flex: 1, overflowY: "auto", minHeight: 0, paddingRight: 2 }}>
-                {assignmentQuestions.length === 0 ? (
+                {loadingBank ? (
+                  [0,1,2].map(i => (
+                    <div key={i} style={{ borderRadius:10, border:"1.5px solid #e2e8f0", background:"#fff", padding:"10px 12px", marginBottom:8, display:"flex", gap:8, alignItems:"center" }}>
+                      <div className="sk" style={{ width:18, height:18, borderRadius:4, flexShrink:0 }} />
+                      <div style={{ flex:1 }}>
+                        <div className="sk" style={{ height:11, width:`${55+i*10}%`, marginBottom:5 }} />
+                        <div className="sk" style={{ height:9, width:"35%", borderRadius:6 }} />
+                      </div>
+                    </div>
+                  ))
+                ) : assignmentQuestions.length === 0 ? (
                   <div style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", marginTop: 24, lineHeight: 1.7 }}>
                     No questions yet.<br />Select from the bank or use AI Suggest →
                   </div>
@@ -923,7 +988,22 @@ export default function App({ paperTemplate, onPaperTemplateChange, onPaperTempl
               </div>
 
               <div style={{ flex: 1, overflowY: "auto", minHeight: 0, paddingRight: 3 }}>
-                {filteredQuestions.length === 0 ? (
+                {loadingBank ? (
+                  [0,1,2,3,4].map(i => (
+                    <div key={i} style={{ borderRadius:14, border:"1.5px solid #e2e8f0", background:"#fff", padding:"11px 13px", marginBottom:8, display:"flex", gap:10 }}>
+                      <div className="sk" style={{ width:14, height:14, borderRadius:3, flexShrink:0, marginTop:2 }} />
+                      <div style={{ flex:1 }}>
+                        <div className="sk" style={{ height:12, width:`${60+i*7}%`, marginBottom:7 }} />
+                        <div className="sk" style={{ height:10, width:`${35+i*4}%`, marginBottom:10 }} />
+                        <div style={{ display:"flex", gap:5 }}>
+                          <div className="sk" style={{ height:18, width:36, borderRadius:999 }} />
+                          <div className="sk" style={{ height:18, width:44, borderRadius:999 }} />
+                          <div className="sk" style={{ height:18, width:52, borderRadius:999 }} />
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : filteredQuestions.length === 0 ? (
                   <div style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", marginTop: 16 }}>
                     {questions.length === 0 ? "No questions yet." : "No questions match your search or filter."}
                   </div>
