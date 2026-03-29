@@ -94,6 +94,63 @@ function AppContent() {
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
+  // Shared helper: call AI, save questions to DB, attach to an assignment or paper
+  async function generateAndAttach({ grade, subject, ai, assignmentId, paperId }) {
+    const gradeNum = grade?.replace(/[^0-9]/g, "") || grade;
+    const res = await authFetch("/api/generate-questions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        grade: gradeNum,
+        subject,
+        topic: ai.topics || "",
+        difficulty: ai.difficulty,
+        type: ai.type === "Mixed" ? "MCQ" : ai.type, // backend handles MCQ/FRQ
+        count: ai.count,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || "AI generation failed");
+    }
+    const generated = await res.json();
+    if (!Array.isArray(generated) || generated.length === 0) {
+      throw new Error("AI returned no questions. Try different topics.");
+    }
+
+    // Save each question then attach it — run all in parallel
+    await Promise.all(generated.map(async (q) => {
+      const createRes = await authFetch("/api/questions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: q.type,
+          marks: q.marks ?? 1,
+          difficulty: q.difficulty ?? ai.difficulty,
+          topic: q.topic || ai.topics || "",
+          subject,
+          grade,
+          text: q.text || q.richText,
+          options: q.options ?? [],
+          correctIndex: q.correctIndex ?? null,
+        }),
+      });
+      if (!createRes.ok) return;
+      const saved = await createRes.json();
+      const qid = String(saved.id);
+      const attachUrl = assignmentId
+        ? `/api/questions?assignmentId=${assignmentId}`
+        : `/api/questions?paperId=${paperId}`;
+      await authFetch(attachUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questionId: qid }),
+      });
+    }));
+
+    return generated.length;
+  }
+
   const pushToast = (message, variant = "info") => {
     const id =
       Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -253,32 +310,40 @@ function AppContent() {
           onContinue={async (template) => {
             setBuilderOrigin("paperSetup");
             setCreatingPaper(true);
+            const { ai, ...paperFields } = template;
             try {
               const res = await authFetch("/api/papers", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  title: template.subject || "Question Paper",
-                  schoolName: template.schoolName || null,
-                  schoolAddress: template.schoolAddress || null,
-                  grade: template.grade || null,
-                  subject: template.subject || null,
-                  examType: template.examType || null,
-                  duration: template.duration || null,
-                  totalMarks: template.totalMarks ? Number(template.totalMarks) : null,
-                  academicYear: template.academicYear || null,
-                  examDate: template.date || null,
+                  title: paperFields.subject || "Question Paper",
+                  schoolName: paperFields.schoolName || null,
+                  schoolAddress: paperFields.schoolAddress || null,
+                  grade: paperFields.grade || null,
+                  subject: paperFields.subject || null,
+                  examType: paperFields.examType || null,
+                  duration: paperFields.duration || null,
+                  totalMarks: paperFields.totalMarks ? Number(paperFields.totalMarks) : null,
+                  academicYear: paperFields.academicYear || null,
+                  examDate: paperFields.date || null,
                 }),
               });
               if (!res.ok) throw new Error("Failed to create paper");
               const paper = await res.json();
-              setPaperTemplate(template);
-              setOpenPaperId(String(paper.id));
+              const paperId = String(paper.id);
+
+              if (ai) {
+                const n = await generateAndAttach({ grade: paperFields.grade, subject: paperFields.subject, ai, paperId });
+                pushToast(`✨ Generated ${n} questions`, "success");
+              }
+
+              setPaperTemplate(paperFields);
+              setOpenPaperId(paperId);
               setOpenAssignmentId(null);
               setView("paperBuilder");
             } catch (err) {
               console.error(err);
-              alert("Failed to create question paper on server.");
+              pushToast(err.message || "Failed to create question paper.", "error");
             } finally {
               setCreatingPaper(false);
             }
@@ -354,7 +419,7 @@ function AppContent() {
         <AssignmentSetup
           creating={creatingAssignment}
           onBack={() => setView("type")}
-          onContinue={async ({ grade, subject }) => {
+          onContinue={async ({ grade, subject, ai }) => {
             setCreatingAssignment(true);
             try {
               const res = await authFetch("/api/assignments", {
@@ -364,16 +429,23 @@ function AppContent() {
               });
               if (!res.ok) throw new Error("Failed to create assignment");
               const a = await res.json();
+              const assignmentId = String(a.id);
+
+              if (ai) {
+                const n = await generateAndAttach({ grade, subject, ai, assignmentId });
+                pushToast(`✨ Generated ${n} questions`, "success");
+              }
+
               setPaperTemplate(null);
               setOpenPaperId(null);
-              setOpenAssignmentId(String(a.id));
+              setOpenAssignmentId(assignmentId);
               setOpenGrade(grade || null);
               setOpenSubject(subject || null);
               setBuilderOrigin("assignmentSetup");
               setView("assignmentBuilder");
             } catch (err) {
               console.error(err);
-              pushToast("Failed to create assignment on server.", "error");
+              pushToast(err.message || "Failed to create assignment.", "error");
             } finally {
               setCreatingAssignment(false);
             }

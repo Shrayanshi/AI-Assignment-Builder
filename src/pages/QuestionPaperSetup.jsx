@@ -2,6 +2,12 @@ import { useState } from "react";
 import { Button } from "../components/ui/Button";
 import { Card, CardHeader, CardTitle, CardDescription } from "../components/ui/Card";
 
+const inputStyle = {
+  marginTop: 4, width: "100%", padding: "8px 10px",
+  borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13,
+  fontFamily: "inherit", outline: "none", boxSizing: "border-box",
+};
+
 export function QuestionPaperSetup({ onBack, onContinue, initialTemplate, creating = false }) {
   const [formData, setFormData] = useState(
     initialTemplate || {
@@ -16,13 +22,28 @@ export function QuestionPaperSetup({ onBack, onContinue, initialTemplate, creati
       date: "",
     }
   );
+  const [rightTab, setRightTab] = useState("preview"); // "preview" | "ai"
+
+  // AI-specific fields
+  const [aiTopics, setAiTopics]       = useState("");
+  const [aiCount, setAiCount]         = useState(10);
+  const [aiDifficulty, setAiDifficulty] = useState(3);
+  const [aiType, setAiType]           = useState("MCQ");
 
   const handleChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  const isAiMode = rightTab === "ai";
+
   const handleContinue = () => {
-    if (onContinue) onContinue(formData);
+    if (onContinue) {
+      if (isAiMode) {
+        onContinue({ ...formData, ai: { topics: aiTopics, count: aiCount, difficulty: aiDifficulty, type: aiType } });
+      } else {
+        onContinue(formData);
+      }
+    }
   };
 
   const isFormValid =
@@ -221,7 +242,9 @@ export function QuestionPaperSetup({ onBack, onContinue, initialTemplate, creati
             )}
             <div style={{ flex: 1, textAlign: "right" }}>
               <Button onClick={handleContinue} disabled={!isFormValid || creating} style={{ opacity: creating ? 0.7 : 1 }}>
-                {creating ? "Creating…" : "Continue to Add Questions →"}
+                {creating
+                  ? (isAiMode ? "Generating & Creating…" : "Creating…")
+                  : (isAiMode ? "✨ Generate & Create →" : "Continue to Add Questions →")}
               </Button>
             </div>
           </div>
@@ -229,45 +252,119 @@ export function QuestionPaperSetup({ onBack, onContinue, initialTemplate, creati
 
         <div className="qp-setup-preview">
           <Card style={{ position: "sticky", top: 24 }}>
-            <CardHeader>
-              <CardTitle style={{ fontSize: 13 }}>Preview</CardTitle>
-              <CardDescription style={{ fontSize: 11 }}>How it will appear on the question paper</CardDescription>
-            </CardHeader>
-            <div
-              style={{
-                borderRadius: 8,
-                border: "1px solid #e5e7eb",
-                padding: 12,
-                background: "#ffffff",
-                fontSize: 11,
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-              }}
-            >
-              <div style={{ textAlign: "center", borderBottom: "1px solid #e5e7eb", paddingBottom: 8 }}>
-                <p style={{ fontWeight: 700, fontSize: 12, margin: 0 }}>{formData.schoolName || "School Name"}</p>
-                <p style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>{formData.schoolAddress || "School Address"}</p>
-              </div>
-              <div style={{ textAlign: "center" }}>
-                <p style={{ fontWeight: 600, margin: 0 }}>{formData.examType || "Exam Type"}</p>
-                <p style={{ fontSize: 11, color: "#4b5563", marginTop: 2 }}>Academic Year: {formData.academicYear || "YYYY-YYYY"}</p>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 4 }}>
-                <div><span style={{ color: "#6b7280" }}>Class: </span>{formData.grade || "Grade X"}</div>
-                <div><span style={{ color: "#6b7280" }}>Subject: </span>{formData.subject || "Subject"}</div>
-                <div><span style={{ color: "#6b7280" }}>Duration: </span>{formData.duration || "-- hours"}</div>
-                <div><span style={{ color: "#6b7280" }}>Max Marks: </span>{formData.totalMarks || "--"}</div>
-                {formData.date && (
-                  <div style={{ gridColumn: "1 / -1" }}>
-                    <span style={{ color: "#6b7280" }}>Date: </span>{new Date(formData.date).toLocaleDateString()}
-                  </div>
-                )}
-              </div>
-              <div style={{ borderTop: "1px dashed #e5e7eb", paddingTop: 8, textAlign: "center" }}>
-                <p style={{ fontSize: 11, color: "#9ca3af", margin: 0 }}>Questions will appear below this header</p>
-              </div>
+            {/* Tab toggle */}
+            <div style={{ display: "flex", gap: 4, marginBottom: 12, background: "#f3f4f6", borderRadius: 8, padding: 3 }}>
+              {[
+                { key: "preview", label: "📄 Preview" },
+                { key: "ai",     label: "✨ Generate with AI" },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setRightTab(key)}
+                  style={{
+                    flex: 1, padding: "6px 4px", borderRadius: 6, border: "none", cursor: "pointer",
+                    fontFamily: "'DM Sans', system-ui, sans-serif", fontSize: 12, fontWeight: 600,
+                    background: rightTab === key ? "#ffffff" : "transparent",
+                    color: rightTab === key ? "#4f46e5" : "#6b7280",
+                    boxShadow: rightTab === key ? "0 1px 4px rgba(0,0,0,0.09)" : "none",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
+
+            {rightTab === "preview" ? (
+              <>
+                <CardHeader style={{ padding: 0, marginBottom: 8 }}>
+                  <CardTitle style={{ fontSize: 13 }}>Preview</CardTitle>
+                  <CardDescription style={{ fontSize: 11 }}>How it will appear on the question paper</CardDescription>
+                </CardHeader>
+                <div style={{ borderRadius: 8, border: "1px solid #e5e7eb", padding: 12, background: "#ffffff", fontSize: 11, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ textAlign: "center", borderBottom: "1px solid #e5e7eb", paddingBottom: 8 }}>
+                    <p style={{ fontWeight: 700, fontSize: 12, margin: 0 }}>{formData.schoolName || "School Name"}</p>
+                    <p style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>{formData.schoolAddress || "School Address"}</p>
+                  </div>
+                  <div style={{ textAlign: "center" }}>
+                    <p style={{ fontWeight: 600, margin: 0 }}>{formData.examType || "Exam Type"}</p>
+                    <p style={{ fontSize: 11, color: "#4b5563", marginTop: 2 }}>Academic Year: {formData.academicYear || "YYYY-YYYY"}</p>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 4 }}>
+                    <div><span style={{ color: "#6b7280" }}>Class: </span>{formData.grade || "Grade X"}</div>
+                    <div><span style={{ color: "#6b7280" }}>Subject: </span>{formData.subject || "Subject"}</div>
+                    <div><span style={{ color: "#6b7280" }}>Duration: </span>{formData.duration || "-- hours"}</div>
+                    <div><span style={{ color: "#6b7280" }}>Max Marks: </span>{formData.totalMarks || "--"}</div>
+                    {formData.date && (
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <span style={{ color: "#6b7280" }}>Date: </span>{new Date(formData.date).toLocaleDateString()}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ borderTop: "1px dashed #e5e7eb", paddingTop: 8, textAlign: "center" }}>
+                    <p style={{ fontSize: 11, color: "#9ca3af", margin: 0 }}>Questions will appear below this header</p>
+                  </div>
+                </div>
+              </>
+            ) : (
+              /* AI Generate panel */
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <p style={{ margin: 0, fontSize: 12, color: "#4338ca", fontWeight: 600 }}>
+                  ✨ AI will generate questions matching this paper's grade &amp; subject
+                </p>
+
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 4, display: "block" }}>
+                    Topics <span style={{ fontWeight: 400, color: "#9ca3af" }}>(optional, comma-separated)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={aiTopics}
+                    onChange={e => setAiTopics(e.target.value)}
+                    placeholder="e.g. Photosynthesis, Cell Division"
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 4, display: "block" }}># of Questions</label>
+                    <input
+                      type="number" min={1} max={30} value={aiCount}
+                      onChange={e => setAiCount(Math.min(30, Math.max(1, Number(e.target.value) || 1)))}
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 4, display: "block" }}>Type</label>
+                    <select value={aiType} onChange={e => setAiType(e.target.value)} style={{ ...inputStyle, appearance: "none" }}>
+                      <option value="MCQ">MCQ</option>
+                      <option value="FRQ">Short Answer</option>
+                      <option value="Mixed">Mixed</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 4, display: "block" }}>
+                    Difficulty: <span style={{ color: "#4f46e5" }}>{["", "Easy", "Easy-Med", "Medium", "Med-Hard", "Hard"][aiDifficulty]}</span>
+                  </label>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 11, color: "#6b7280" }}>Easy</span>
+                    <input
+                      type="range" min={1} max={5} value={aiDifficulty}
+                      onChange={e => setAiDifficulty(Number(e.target.value))}
+                      style={{ flex: 1, accentColor: "#4f46e5" }}
+                    />
+                    <span style={{ fontSize: 11, color: "#6b7280" }}>Hard</span>
+                  </div>
+                </div>
+
+                <div style={{ background: "#fef3c7", borderRadius: 8, padding: "8px 10px", fontSize: 11, color: "#92400e" }}>
+                  💡 Fill in School Name, Grade, Subject &amp; Exam Type on the left before generating.
+                </div>
+              </div>
+            )}
           </Card>
         </div>
       </div>
